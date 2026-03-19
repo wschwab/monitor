@@ -44,6 +44,24 @@
 - Do not block MVP on passkeys, fee sponsorship, batching, or 2D nonces
 - Backend persistence is intentionally in-memory; restart losing live tasks is acceptable for MVP if explicitly surfaced
 
+### Test-Driven Development (Required)
+
+**All tasks MUST follow the TDD workflow defined in** `.sisyphus/templates/tdd-workflow.md`
+
+For each task:
+1. **RED Phase**: Write failing tests FIRST, run and confirm failure
+2. **GREEN Phase**: Write minimal implementation to pass
+3. **REFACTOR Phase**: Clean up, ensure all tests pass
+
+**Required evidence files:**
+- `.sisyphus/evidence/{task-id}-red.txt` - Failing test output
+- `.sisyphus/evidence/{task-id}-green.txt` - Passing test output
+
+**Anti-patterns to avoid:**
+- Writing implementation before tests
+- Placeholder tests (`expect(true).toBe(true)`)
+- Skipping RED evidence
+
 ## Repo Validation First
 
 Before coding any feature, validate the repo matches the intended monorepo shape from `.sisyphus/plans/monitor-expanded-spec.md`.

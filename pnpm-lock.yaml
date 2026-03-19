@@ -14,6 +14,9 @@ importers:
 
   apps/backend:
     dependencies:
+      '@monitor/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       viem:
         specifier: ^2.0.0
         version: 2.47.5(typescript@5.9.3)

@@ -7,3 +7,4 @@
 export * from './types';
 export * from './constants';
 export * from './memo';
+export * from './spend-policy';
