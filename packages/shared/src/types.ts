@@ -223,3 +223,53 @@ export interface CreateTaskResponse {
   budgetWei: string;
   deadline: number;
 }
+
+// =============================================================================
+// Task Record (Full Task with Metadata)
+// =============================================================================
+
+/**
+ * Complete task record stored in backend.
+ */
+export interface TaskRecord {
+  id: string;
+  prompt: string;
+  budgetWei: bigint;
+  spentWei: bigint;
+  status: TaskStatus;
+  createdAt: number;
+  deadline: number;
+  sources: string[];
+  enhancements: EnhancementToggles;
+  owner: string;
+}
+
+// =============================================================================
+// Feed Entry
+// =============================================================================
+
+/**
+ * Feed entry type for real-time updates.
+ */
+export type FeedEntryType =
+  | 'status'
+  | 'source'
+  | 'query'
+  | 'reasoning'
+  | 'enhancement'
+  | 'spend'
+  | 'complete'
+  | 'error';
+
+/**
+ * Individual feed entry for task activity stream.
+ */
+export interface FeedEntry {
+  id: string;
+  type: FeedEntryType;
+  message: string;
+  timestamp: number;
+  amountWei?: bigint;
+  serviceId?: string;
+  payload?: unknown;
+}
