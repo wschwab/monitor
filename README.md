@@ -1,6 +1,6 @@
 # 🔬 Monitor
 
-> *"Because AI agents shouldn't spend your money without receipts."*
+> *"Monitor your agent monitoring the situation."*
 
 [![Tests](https://img.shields.io/badge/tests-144%20passing-brightgreen)]()
 [![TDD](https://img.shields.io/badge/TDD-RED%20%E2%86%92%20GREEN-blue)]()
