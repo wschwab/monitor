@@ -224,6 +224,31 @@ export class SpendLedger {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Convenience aliases (friendlier API used by adapters and tests)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Alias: createTask — initialise a task in RUNNING state (ready to spend).
+   */
+  createTask(options: { taskId: string; budgetWei: bigint; deadlineMs: number }): void {
+    this.initTask(options.taskId, options.budgetWei, options.deadlineMs, 'RUNNING');
+  }
+
+  /**
+   * Alias: getSpendTotals — same as getTotals.
+   */
+  getSpendTotals(taskId: string): SpendTotals {
+    return this.getTotals(taskId);
+  }
+
+  /**
+   * Alias: getTaskEntries — same as getEntries.
+   */
+  getTaskEntries(taskId: string): SpendLedgerEntry[] {
+    return this.getEntries(taskId);
+  }
+
   /**
    * Close and remove a task from the ledger.
    */

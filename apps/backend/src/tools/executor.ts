@@ -1,8 +1,8 @@
 /**
- * Fake Tool Executor
+ * Tool Executor
  *
- * Simulates tool execution for demo mode and testing.
- * Returns deterministic fixtures without calling real APIs.
+ * Routes tool calls to real adapters (live mode) or deterministic
+ * fixtures (demo mode). Premium providers always use Treasury billing.
  */
 
 import {
@@ -13,6 +13,8 @@ import {
   isPremiumTool,
 } from './definitions';
 import { PremiumExecutor } from '../premium-executor';
+import { ExaAdapter } from './exa';
+import { SpendLedger } from '../spend-ledger';
 
 // =============================================================================
 // Types
@@ -21,6 +23,8 @@ import { PremiumExecutor } from '../premium-executor';
 export interface ExecutorOptions {
   demoMode?: boolean;
   premiumExecutor?: PremiumExecutor;
+  spendLedger?: SpendLedger;
+  exaApiKey?: string;
 }
 
 export interface ExecutionContext {
@@ -67,20 +71,31 @@ const PERPLEXITY_FIXTURES: Record<string, string> = {
 };
 
 // =============================================================================
-// Fake Tool Executor
+// Tool Executor
 // =============================================================================
 
 export class FakeToolExecutor {
   private demoMode: boolean;
   private premiumExecutor?: PremiumExecutor;
+  private exaAdapter?: ExaAdapter;
 
   constructor(options: ExecutorOptions = {}) {
     this.demoMode = options.demoMode ?? true;
     this.premiumExecutor = options.premiumExecutor;
+
+    // Wire real Exa adapter if spend ledger and API key are available
+    if (options.spendLedger) {
+      this.exaAdapter = new ExaAdapter({
+        spendLedger: options.spendLedger,
+        apiKey: options.exaApiKey ?? process.env['EXA_API_KEY'] ?? '',
+        demoMode: this.demoMode,
+        fallbackToDemo: true, // always safe to fall back
+      });
+    }
   }
 
   /**
-   * Execute a tool call (fake implementation).
+   * Execute a tool call — real adapter when available, fixture otherwise.
    */
   async execute(call: ToolCall, context: ExecutionContext): Promise<ToolResult> {
     const tool = getTool(call.toolId);
@@ -97,8 +112,10 @@ export class FakeToolExecutor {
     const costWei = getToolCost(call.toolId);
 
     try {
-      // Simulate execution delay
-      await this.delay(100);
+      // Simulate execution delay (skipped for real adapters)
+      if (!this.exaAdapter || call.toolId !== 'exa') {
+        await this.delay(100);
+      }
 
       switch (tool.id) {
         case 'exa':
@@ -154,10 +171,27 @@ export class FakeToolExecutor {
   // Individual Tool Executors
   // =============================================================================
 
-  private executeExa(call: ToolCall, context: ExecutionContext, costWei: bigint): ToolResult {
+  private async executeExa(call: ToolCall, context: ExecutionContext, costWei: bigint): Promise<ToolResult> {
     const query = (call.parameters.query as string) || context.query;
-    const normalizedQuery = query.toLowerCase();
 
+    // Use real adapter if available
+    if (this.exaAdapter) {
+      const result = await this.exaAdapter.search({
+        taskId: context.taskId,
+        query,
+        idempotencyKey: `exa-${context.taskId}-${Date.now()}`,
+      });
+      return {
+        success: result.success,
+        toolId: 'exa',
+        data: result.data,
+        costWei: result.spendEntry?.amountWei ?? costWei,
+        error: result.error,
+      };
+    }
+
+    // Fallback: inline fixture (no spend ledger wired)
+    const normalizedQuery = query.toLowerCase();
     let data = EXA_FIXTURES.default;
     for (const [key, fixture] of Object.entries(EXA_FIXTURES)) {
       if (normalizedQuery.includes(key)) {
@@ -165,15 +199,10 @@ export class FakeToolExecutor {
         break;
       }
     }
-
     return {
       success: true,
       toolId: 'exa',
-      data: {
-        ...data,
-        query,
-        timestamp: new Date().toISOString(),
-      },
+      data: { ...data, query, timestamp: new Date().toISOString() },
       costWei,
     };
   }

@@ -11,7 +11,7 @@
 **Monitor** is a budget-aware AI research agent that proves one radical concept: *you can let an AI spend money on APIs and still know exactly where every penny went.*
 
 Picture this: You tell an AI "Research quantum computing breakthroughs, here's $50." The agent then:
-- Calls Exa, CERN's data portal, and Perplexity
+- Calls Exa, CERN's classified archives, and Perplexity
 - Pays for each API call from its on-chain budget
 - Streams live updates to your browser
 - Returns a report + auditable spend log + refund of unused funds
@@ -48,7 +48,7 @@ Most AI demos are "trust me bro" systems. We wanted "here's the blockchain recei
 │         ▼                    ▼                                  │
 │  ┌──────────────────────────────────────┐                      │
 │  │         WebSocket Live Feed          │                      │
-│  │   "Agent is querying CERN... $0.10"  │                      │
+│  │  "Accessing CERN classified archive... $0.10" │             │
 │  └──────────────────────────────────────┘                      │
 │                                                                 │
 │  ┌─────────────────────────────────────────────────────────┐   │
@@ -75,11 +75,14 @@ Most AI demos are "trust me bro" systems. We wanted "here's the blockchain recei
 
 ## 🧪 The Demo (Show, Don't Tell)
 
-### Scenario: "Research the Higgs Boson"
+### Scenario: "Uncover the Classified CERN Dossier on Hououin Kyouma"
+
+*They told us CERN was building a particle accelerator. They lied. El Psy Kongroo.*
 
 1. **You** create a task:
    ```
-   Prompt: "What is the Higgs boson and why does it matter?"
+   Prompt: "Find the classified CERN dossier on the mad scientist Hououin Kyouma
+            and his alleged interference with the LHC time displacement experiments"
    Budget: $5.00
    Deadline: 1 hour
    Sources: [CERN Temporal, Exa, Perplexity]
@@ -91,9 +94,9 @@ Most AI demos are "trust me bro" systems. We wanted "here's the blockchain recei
 
 3. **Live Execution** (you watch in real-time):
    ```
-   [14:32:01] 🔍 Querying CERN Temporal Database... $0.10
-   [14:32:04] 📊 Received CERN data (Higgs discovery, July 4 2012)
-   [14:32:08] 🔍 Querying Exa for recent articles... $0.01
+   [14:32:01] 🔍 Accessing CERN classified archive... $0.10
+   [14:32:04] 📊 Retrieved dossier: Subject "Hououin Kyouma", threat level: DIVERGENT
+   [14:32:08] 🔍 Querying Exa for corroborating evidence... $0.01
    [14:32:12] 🧠 Synthesizing report with LLM... $0.50
    [14:32:45] ✅ Report complete! Total spent: $0.61
    [14:32:46] 💰 Refunding $4.39 to your wallet
@@ -254,7 +257,7 @@ MIT - Do what you want, just don't blame us if your AI spends all your money on 
 
 ## 🙏 Acknowledgments
 
-- **CERN** for actually discovering the Higgs boson (we just wrap their API)
+- **CERN** for allegedly building a time machine and keeping detailed dossiers on mad scientists who interfere with it (we just wrap their API — the classified parts)
 - **Ethereum** for making programmable money a thing
 - **Coffee** for making this possible at 3am
 
