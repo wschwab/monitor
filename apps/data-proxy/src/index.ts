@@ -5,35 +5,108 @@
  * Implements /discover and /llms.txt for provider discovery.
  */
 
-import { createServer } from 'http';
+import Fastify from 'fastify';
+import { defiStatsService } from './services/defi-stats';
+import { isDemoMode } from './demo-fixtures';
 
-const PORT = process.env['PORT'] || 3002;
+export interface AppOptions {
+  demoMode?: boolean;
+}
 
-// Placeholder discovery endpoint
-const DISCOVER_RESPONSE = {
-  name: 'monitor-data-proxy',
-  version: '0.1.0',
-  providers: [
-    { id: 'defi-stats', type: 'wrapped', description: 'DeFi statistics from CoinGecko' },
-    { id: 'news', type: 'wrapped', description: 'News feed aggregation' },
-    { id: 'cern-temporal', type: 'premium', description: 'CERN temporal data (Treasury-backed)' },
-    { id: 'cia-declassified', type: 'premium', description: 'CIA declassified documents (Treasury-backed)' },
-  ],
-};
+export function buildApp(options: AppOptions = {}) {
+  const app = Fastify({
+    logger: true,
+  });
 
-const server = createServer((req, res) => {
-  if (req.url === '/discover' || req.url === '/llms.txt') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify(DISCOVER_RESPONSE, null, 2));
-    return;
+  const demoMode = options.demoMode ?? isDemoMode();
+
+  // Override service with demo mode if specified
+  if (demoMode) {
+    defiStatsService['demoMode'] = true;
   }
 
-  res.writeHead(404, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({ error: 'Not found' }));
-});
+  // =========================================================================
+  // Discovery Routes
+  // =========================================================================
 
-server.listen(PORT, () => {
-  console.log(`Monitor data proxy running on port ${PORT}`);
-});
+  const DISCOVER_RESPONSE = {
+    name: 'monitor-data-proxy',
+    version: '0.1.0',
+    providers: [
+      { id: 'defi-stats', type: 'wrapped', description: 'DeFi statistics from CoinGecko' },
+      { id: 'news', type: 'wrapped', description: 'News feed aggregation' },
+      { id: 'cern-temporal', type: 'premium', description: 'CERN temporal data (Treasury-backed)' },
+      { id: 'cia-declassified', type: 'premium', description: 'CIA declassified documents (Treasury-backed)' },
+    ],
+  };
 
-export { server };
+  app.get('/discover', async () => {
+    return DISCOVER_RESPONSE;
+  });
+
+  app.get('/llms.txt', async (request, reply) => {
+    reply.header('content-type', 'text/plain');
+    return `monitor-data-proxy
+Version: 0.1.0
+
+Available Providers:
+- defi-stats: DeFi statistics from CoinGecko (wrapped)
+- news: News feed aggregation (wrapped)
+- cern-temporal: CERN temporal data (premium, Treasury-backed)
+- cia-declassified: CIA declassified documents (premium, Treasury-backed)
+
+Demo Mode: ${demoMode ? 'enabled' : 'disabled'}
+`;
+  });
+
+  // =========================================================================
+  // DeFi Stats Routes
+  // =========================================================================
+
+  app.get('/defi-stats', async (request) => {
+    const { currency = 'usd' } = request.query as { currency?: string };
+    
+    const data = await defiStatsService.getGlobalData(currency);
+    
+    return {
+      ...data,
+      demo: demoMode || data.provider === 'demo',
+    };
+  });
+
+  // =========================================================================
+  // Health Check
+  // =========================================================================
+
+  app.get('/health', async () => {
+    return { status: 'ok', demoMode };
+  });
+
+  return app;
+}
+
+// =========================================================================
+// Server Startup (for direct execution)
+// =========================================================================
+
+const PORT = parseInt(process.env['PORT'] || '3002', 10);
+
+async function main() {
+  const app = buildApp();
+  
+  try {
+    await app.listen({ port: PORT, host: '0.0.0.0' });
+    console.log(`Monitor data proxy running on port ${PORT}`);
+  } catch (err) {
+    app.log.error(err);
+    process.exit(1);
+  }
+}
+
+// Start server if run directly
+if (require.main === module) {
+  main();
+}
+
+export { defiStatsService };
+export * from './demo-fixtures';
