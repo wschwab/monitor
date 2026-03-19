@@ -3,432 +3,381 @@ pragma solidity ^0.8.20;
 
 import "forge-std/Test.sol";
 import "../src/MonitorTreasury.sol";
+import "../src/interfaces/ISignatureTransfer.sol";
+import "./mocks/MockERC20.sol";
+import "./mocks/MockPermit2.sol";
 
 /**
  * @title MonitorTreasuryTest
- * @dev Comprehensive tests for MonitorTreasury contract.
+ * @dev Comprehensive tests for MonitorTreasury (Permit2 / USDC variant).
  *
- * TDD: These tests MUST fail initially (RED phase), then pass after implementation (GREEN phase).
+ * Budget is denominated in USDC (6 decimals). Permit2 replaces msg.value:
+ * the user signs a PermitTransferFrom off-chain; the contract pulls USDC
+ * atomically in createTask() with no prior approve() needed.
  */
 contract MonitorTreasuryTest is Test {
     MonitorTreasury public treasury;
-    
-    // Test accounts
-    address public owner = address(1);
-    address public user = address(2);
-    address public agent = address(3);
-    address public unauthorized = address(4);
-    address public serviceProvider = address(5);
-    
-    // Test values
-    uint256 public constant BUDGET = 1 ether;
-    uint256 public constant DEADLINE_SECONDS = 1 hours;
-    bytes32 public constant TASK_ID = keccak256("test-task-1");
-    bytes32 public constant MEMO = keccak256("test-memo");
+    MockERC20       public usdc;
+    MockPermit2     public permit2;
 
-    function setUp() public {
-        vm.startPrank(owner);
-        treasury = new MonitorTreasury();
-        vm.stopPrank();
-        
-        // Fund user account
-        vm.deal(user, 10 ether);
-        vm.deal(agent, 1 ether);
+    // Test accounts
+    address public owner           = address(1);
+    address public user            = address(2);
+    address public agent           = address(3);
+    address public unauthorized    = address(4);
+    address public serviceProvider = address(5);
+
+    // Test values — 1 USDC (6 decimals)
+    uint256 public constant BUDGET           = 1_000_000;
+    uint256 public constant DEADLINE_SECONDS = 1 hours;
+    bytes32 public constant TASK_ID          = keccak256("test-task-1");
+    bytes32 public constant MEMO             = keccak256("test-memo");
+
+    // =========================================================================
+    // Helpers
+    // =========================================================================
+
+    /// @dev Build a PermitTransferFrom for usdc with a 1-hour deadline.
+    function _permit(uint256 amount) internal view
+        returns (ISignatureTransfer.PermitTransferFrom memory)
+    {
+        return ISignatureTransfer.PermitTransferFrom({
+            permitted: ISignatureTransfer.TokenPermissions({
+                token:  address(usdc),
+                amount: amount
+            }),
+            nonce:    0,
+            deadline: block.timestamp + 1 hours
+        });
     }
 
     // =========================================================================
-    // Create Task Tests
+    // Setup
     // =========================================================================
 
-    function test_CreateTask_TransfersBudgetFromUser() public {
-        vm.startPrank(user);
-        
-        uint256 userBalanceBefore = user.balance;
-        
-        treasury.createTask{value: BUDGET}(TASK_ID, BUDGET, DEADLINE_SECONDS);
-        
-        uint256 userBalanceAfter = user.balance;
-        
-        assertEq(userBalanceBefore - userBalanceAfter, BUDGET, "Budget should be transferred from user");
-        vm.stopPrank();
+    function setUp() public {
+        usdc    = new MockERC20("USD Coin", "USDC", 6);
+        permit2 = new MockPermit2();
+
+        vm.prank(owner);
+        treasury = new MonitorTreasury(address(usdc), address(permit2));
+
+        // Fund test accounts with USDC
+        usdc.mint(user,  10_000_000); // 10 USDC
+        usdc.mint(agent,  1_000_000); //  1 USDC
+
+        // Users must approve Permit2 once (real world) or the treasury directly
+        vm.prank(user);
+        usdc.approve(address(permit2), type(uint256).max);
+    }
+
+    // =========================================================================
+    // createTask
+    // =========================================================================
+
+    function test_CreateTask_PullsBudgetFromUser() public {
+        uint256 before = usdc.balanceOf(user);
+
+        vm.prank(user);
+        treasury.createTask(TASK_ID, BUDGET, DEADLINE_SECONDS, _permit(BUDGET), "");
+
+        assertEq(before - usdc.balanceOf(user),            BUDGET, "USDC pulled from user");
+        assertEq(usdc.balanceOf(address(treasury)), BUDGET, "Treasury holds USDC");
     }
 
     function test_CreateTask_StoresTaskDetails() public {
-        vm.startPrank(user);
-        
-        treasury.createTask{value: BUDGET}(TASK_ID, BUDGET, DEADLINE_SECONDS);
-        
-        (address taskOwner, uint256 budget, uint256 spent, uint256 deadline, bool active) = treasury.getTask(TASK_ID);
-        
-        assertEq(taskOwner, user, "Task owner should be caller");
-        assertEq(budget, BUDGET, "Budget should match");
-        assertEq(spent, 0, "Initial spent should be 0");
-        assertGt(deadline, block.timestamp, "Deadline should be in future");
-        assertEq(deadline, block.timestamp + DEADLINE_SECONDS, "Deadline should be offset from now");
-        assertTrue(active, "Task should be active");
-        
-        vm.stopPrank();
+        vm.prank(user);
+        treasury.createTask(TASK_ID, BUDGET, DEADLINE_SECONDS, _permit(BUDGET), "");
+
+        (address taskOwner, uint256 budget, uint256 spent, uint256 deadline, bool active) =
+            treasury.getTask(TASK_ID);
+
+        assertEq(taskOwner, user,                              "owner");
+        assertEq(budget,    BUDGET,                            "budget");
+        assertEq(spent,     0,                                 "spent");
+        assertEq(deadline,  block.timestamp + DEADLINE_SECONDS,"deadline");
+        assertTrue(active,                                     "active");
+    }
+
+    function test_CreateTask_EmitsTaskCreatedEvent() public {
+        vm.prank(user);
+        vm.expectEmit(true, true, false, false);
+        emit MonitorTreasury.TaskCreated(TASK_ID, user, BUDGET, 0);
+        treasury.createTask(TASK_ID, BUDGET, DEADLINE_SECONDS, _permit(BUDGET), "");
     }
 
     function test_CreateTask_RevertsIfTaskExists() public {
         vm.startPrank(user);
-        
-        treasury.createTask{value: BUDGET}(TASK_ID, BUDGET, DEADLINE_SECONDS);
-        
-        vm.expectRevert(MonitorTreasury.TaskExists.selector);
-        treasury.createTask{value: BUDGET}(TASK_ID, BUDGET, DEADLINE_SECONDS);
-        
-        vm.stopPrank();
-    }
+        treasury.createTask(TASK_ID, BUDGET, DEADLINE_SECONDS, _permit(BUDGET), "");
 
-    function test_CreateTask_RevertsIfBudgetMismatch() public {
-        vm.startPrank(user);
-        
-        vm.expectRevert(MonitorTreasury.BudgetMismatch.selector);
-        treasury.createTask{value: BUDGET - 1}(TASK_ID, BUDGET, DEADLINE_SECONDS);
-        
+        vm.expectRevert(MonitorTreasury.TaskExists.selector);
+        treasury.createTask(TASK_ID, BUDGET, DEADLINE_SECONDS, _permit(BUDGET), "");
         vm.stopPrank();
     }
 
     function test_CreateTask_RevertsIfZeroBudget() public {
-        vm.startPrank(user);
-        
+        vm.prank(user);
         vm.expectRevert(MonitorTreasury.ZeroBudget.selector);
-        treasury.createTask{value: 0}(TASK_ID, 0, DEADLINE_SECONDS);
-        
-        vm.stopPrank();
+        treasury.createTask(TASK_ID, 0, DEADLINE_SECONDS, _permit(0), "");
+    }
+
+    function test_CreateTask_RevertsIfWrongToken() public {
+        MockERC20 wrongToken = new MockERC20("Wrong", "WRONG", 18);
+        wrongToken.mint(user, 10e18);
+        vm.prank(user);
+        wrongToken.approve(address(permit2), type(uint256).max);
+
+        ISignatureTransfer.PermitTransferFrom memory badPermit =
+            ISignatureTransfer.PermitTransferFrom({
+                permitted: ISignatureTransfer.TokenPermissions({
+                    token:  address(wrongToken),
+                    amount: BUDGET
+                }),
+                nonce:    0,
+                deadline: block.timestamp + 1 hours
+            });
+
+        vm.prank(user);
+        vm.expectRevert(MonitorTreasury.InvalidToken.selector);
+        treasury.createTask(TASK_ID, BUDGET, DEADLINE_SECONDS, badPermit, "");
     }
 
     // =========================================================================
-    // Spend Tests (Agent Authorization)
+    // spend
     // =========================================================================
 
-    function test_Spend_AuthorizedAgentCanSpend() public {
-        // Setup: User creates task, authorizes agent
-        vm.startPrank(user);
-        treasury.createTask{value: BUDGET}(TASK_ID, BUDGET, DEADLINE_SECONDS);
+    function _setupActiveTask() internal {
+        vm.prank(user);
+        treasury.createTask(TASK_ID, BUDGET, DEADLINE_SECONDS, _permit(BUDGET), "");
+        vm.prank(user);
         treasury.authorizeAgent(TASK_ID, agent);
-        vm.stopPrank();
-        
-        // Agent spends
-        vm.startPrank(agent);
-        treasury.spend(TASK_ID, serviceProvider, 0.1 ether, MEMO);
-        vm.stopPrank();
-        
-        // Verify
+    }
+
+    function test_Spend_AuthorizedAgentCanSpend() public {
+        _setupActiveTask();
+
+        vm.prank(agent);
+        treasury.spend(TASK_ID, serviceProvider, 100_000, MEMO);
+
         (, , uint256 spent, , ) = treasury.getTask(TASK_ID);
-        assertEq(spent, 0.1 ether, "Spent should be updated");
+        assertEq(spent, 100_000);
+    }
+
+    function test_Spend_TransfersUSDCToServiceProvider() public {
+        _setupActiveTask();
+        uint256 before = usdc.balanceOf(serviceProvider);
+
+        vm.prank(agent);
+        treasury.spend(TASK_ID, serviceProvider, 100_000, MEMO);
+
+        assertEq(usdc.balanceOf(serviceProvider) - before, 100_000);
+    }
+
+    function test_Spend_TaskOwnerCanSpendWithoutAuthorization() public {
+        vm.prank(user);
+        treasury.createTask(TASK_ID, BUDGET, DEADLINE_SECONDS, _permit(BUDGET), "");
+
+        vm.prank(user);
+        treasury.spend(TASK_ID, serviceProvider, 100_000, MEMO);
+
+        (, , uint256 spent, , ) = treasury.getTask(TASK_ID);
+        assertEq(spent, 100_000);
     }
 
     function test_Spend_RevertsIfUnauthorized() public {
-        // Setup
-        vm.startPrank(user);
-        treasury.createTask{value: BUDGET}(TASK_ID, BUDGET, DEADLINE_SECONDS);
-        treasury.authorizeAgent(TASK_ID, agent);
-        vm.stopPrank();
-        
-        // Unauthorized tries to spend
-        vm.startPrank(unauthorized);
+        _setupActiveTask();
+
+        vm.prank(unauthorized);
         vm.expectRevert(MonitorTreasury.Unauthorized.selector);
-        treasury.spend(TASK_ID, serviceProvider, 0.1 ether, MEMO);
-        vm.stopPrank();
+        treasury.spend(TASK_ID, serviceProvider, 100_000, MEMO);
     }
 
     function test_Spend_RevertsIfTaskInactive() public {
-        // Setup
-        vm.startPrank(user);
-        treasury.createTask{value: BUDGET}(TASK_ID, BUDGET, DEADLINE_SECONDS);
-        treasury.authorizeAgent(TASK_ID, agent);
-        treasury.closeTask(TASK_ID); // Close task
-        vm.stopPrank();
-        
-        // Agent tries to spend on closed task
-        vm.startPrank(agent);
+        _setupActiveTask();
+        vm.prank(user);
+        treasury.closeTask(TASK_ID);
+
+        vm.prank(agent);
         vm.expectRevert(MonitorTreasury.TaskInactive.selector);
-        treasury.spend(TASK_ID, serviceProvider, 0.1 ether, MEMO);
-        vm.stopPrank();
+        treasury.spend(TASK_ID, serviceProvider, 100_000, MEMO);
     }
 
     function test_Spend_RevertsIfDeadlinePassed() public {
-        // Setup
-        vm.startPrank(user);
-        treasury.createTask{value: BUDGET}(TASK_ID, BUDGET, DEADLINE_SECONDS);
-        treasury.authorizeAgent(TASK_ID, agent);
-        vm.stopPrank();
-        
-        // Warp past deadline
+        _setupActiveTask();
         vm.warp(block.timestamp + DEADLINE_SECONDS + 1);
-        
-        // Agent tries to spend after deadline
-        vm.startPrank(agent);
+
+        vm.prank(agent);
         vm.expectRevert(MonitorTreasury.DeadlinePassed.selector);
-        treasury.spend(TASK_ID, serviceProvider, 0.1 ether, MEMO);
-        vm.stopPrank();
+        treasury.spend(TASK_ID, serviceProvider, 100_000, MEMO);
     }
 
     function test_Spend_RevertsIfExceedsBudget() public {
-        // Setup
-        vm.startPrank(user);
-        treasury.createTask{value: BUDGET}(TASK_ID, BUDGET, DEADLINE_SECONDS);
-        treasury.authorizeAgent(TASK_ID, agent);
-        vm.stopPrank();
-        
-        // Agent tries to exceed budget
-        vm.startPrank(agent);
+        _setupActiveTask();
+
+        vm.prank(agent);
         vm.expectRevert(MonitorTreasury.BudgetExceeded.selector);
         treasury.spend(TASK_ID, serviceProvider, BUDGET + 1, MEMO);
-        vm.stopPrank();
     }
 
     function test_Spend_RevertsIfCumulativeSpendExceedsBudget() public {
-        // Setup
-        vm.startPrank(user);
-        treasury.createTask{value: BUDGET}(TASK_ID, BUDGET, DEADLINE_SECONDS);
-        treasury.authorizeAgent(TASK_ID, agent);
-        vm.stopPrank();
-        
-        // First spend: 0.6 ETH
-        vm.startPrank(agent);
-        treasury.spend(TASK_ID, serviceProvider, 0.6 ether, MEMO);
-        
-        // Second spend: 0.5 ETH (would exceed 1 ETH budget)
-        vm.expectRevert(MonitorTreasury.BudgetExceeded.selector);
-        treasury.spend(TASK_ID, serviceProvider, 0.5 ether, MEMO);
-        vm.stopPrank();
-    }
+        _setupActiveTask();
 
-    function test_Spend_TransfersToServiceProvider() public {
-        // Setup
-        vm.startPrank(user);
-        treasury.createTask{value: BUDGET}(TASK_ID, BUDGET, DEADLINE_SECONDS);
-        treasury.authorizeAgent(TASK_ID, agent);
-        vm.stopPrank();
-        
-        uint256 providerBalanceBefore = serviceProvider.balance;
-        
-        // Agent spends
         vm.startPrank(agent);
-        treasury.spend(TASK_ID, serviceProvider, 0.1 ether, MEMO);
+        treasury.spend(TASK_ID, serviceProvider, 600_000, MEMO);
+        vm.expectRevert(MonitorTreasury.BudgetExceeded.selector);
+        treasury.spend(TASK_ID, serviceProvider, 500_000, MEMO);
         vm.stopPrank();
-        
-        uint256 providerBalanceAfter = serviceProvider.balance;
-        assertEq(providerBalanceAfter - providerBalanceBefore, 0.1 ether, "Provider should receive payment");
     }
 
     function test_Spend_EmitsSpendEvent() public {
-        // Setup
-        vm.startPrank(user);
-        treasury.createTask{value: BUDGET}(TASK_ID, BUDGET, DEADLINE_SECONDS);
-        treasury.authorizeAgent(TASK_ID, agent);
-        vm.stopPrank();
-        
-        // Expect event
-        vm.startPrank(agent);
+        _setupActiveTask();
+
+        vm.prank(agent);
         vm.expectEmit(true, true, true, true);
-        emit MonitorTreasury.Spend(TASK_ID, serviceProvider, 0.1 ether, MEMO);
-        
-        treasury.spend(TASK_ID, serviceProvider, 0.1 ether, MEMO);
-        vm.stopPrank();
+        emit MonitorTreasury.Spend(TASK_ID, serviceProvider, 100_000, MEMO);
+        treasury.spend(TASK_ID, serviceProvider, 100_000, MEMO);
     }
 
     // =========================================================================
-    // Record Spend Tests (Idempotency)
+    // recordSpend (no-transfer accounting)
     // =========================================================================
 
     function test_RecordSpend_TracksSpendWithoutTransfer() public {
-        // Setup
-        vm.startPrank(user);
-        treasury.createTask{value: BUDGET}(TASK_ID, BUDGET, DEADLINE_SECONDS);
-        treasury.authorizeAgent(TASK_ID, agent);
-        vm.stopPrank();
-        
-        uint256 providerBalanceBefore = serviceProvider.balance;
-        
-        // Record external spend (e.g., direct MPP)
-        vm.startPrank(agent);
-        treasury.recordSpend(TASK_ID, serviceProvider, 0.1 ether, MEMO);
-        vm.stopPrank();
-        
-        // No transfer occurred
-        assertEq(serviceProvider.balance, providerBalanceBefore, "Provider balance should not change");
-        
-        // But spent is tracked
+        _setupActiveTask();
+        uint256 before = usdc.balanceOf(serviceProvider);
+
+        vm.prank(agent);
+        treasury.recordSpend(TASK_ID, serviceProvider, 100_000, MEMO);
+
+        assertEq(usdc.balanceOf(serviceProvider), before, "no transfer");
         (, , uint256 spent, , ) = treasury.getTask(TASK_ID);
-        assertEq(spent, 0.1 ether, "Spent should be tracked");
+        assertEq(spent, 100_000, "spent tracked");
     }
 
     function test_RecordSpend_RevertsOnDuplicateIdempotency() public {
-        // Setup
-        vm.startPrank(user);
-        treasury.createTask{value: BUDGET}(TASK_ID, BUDGET, DEADLINE_SECONDS);
-        treasury.authorizeAgent(TASK_ID, agent);
-        vm.stopPrank();
-        
-        bytes32 idempotencyKey = keccak256("unique-key-1");
-        
-        // First record
+        _setupActiveTask();
+        bytes32 ikey = keccak256("key-1");
+
         vm.startPrank(agent);
-        treasury.recordSpend(TASK_ID, serviceProvider, 0.1 ether, MEMO, idempotencyKey);
-        
-        // Duplicate should revert
+        treasury.recordSpend(TASK_ID, serviceProvider, 100_000, MEMO, ikey);
         vm.expectRevert(MonitorTreasury.DuplicateIdempotency.selector);
-        treasury.recordSpend(TASK_ID, serviceProvider, 0.2 ether, MEMO, idempotencyKey);
+        treasury.recordSpend(TASK_ID, serviceProvider, 200_000, MEMO, ikey);
         vm.stopPrank();
     }
 
-    function test_RecordSpend_SameIdempotencyDifferentAmountReverts() public {
-        // Setup
-        vm.startPrank(user);
-        treasury.createTask{value: BUDGET}(TASK_ID, BUDGET, DEADLINE_SECONDS);
-        treasury.authorizeAgent(TASK_ID, agent);
-        vm.stopPrank();
-        
-        bytes32 idempotencyKey = keccak256("unique-key-1");
-        
-        // First record: 0.1 ETH
+    function test_RecordSpend_SameKeyDifferentAmountReverts() public {
+        _setupActiveTask();
+        bytes32 ikey = keccak256("key-1");
+
         vm.startPrank(agent);
-        treasury.recordSpend(TASK_ID, serviceProvider, 0.1 ether, MEMO, idempotencyKey);
-        
-        // Same key, different amount: should revert, not add
+        treasury.recordSpend(TASK_ID, serviceProvider, 100_000, MEMO, ikey);
         vm.expectRevert(MonitorTreasury.DuplicateIdempotency.selector);
-        treasury.recordSpend(TASK_ID, serviceProvider, 0.2 ether, MEMO, idempotencyKey);
+        treasury.recordSpend(TASK_ID, serviceProvider, 200_000, MEMO, ikey);
         vm.stopPrank();
-        
-        // Verify only first amount counted
+
         (, , uint256 spent, , ) = treasury.getTask(TASK_ID);
-        assertEq(spent, 0.1 ether, "Only first amount should be counted");
+        assertEq(spent, 100_000, "only first amount counted");
     }
 
     // =========================================================================
-    // Close Task Tests
+    // closeTask
     // =========================================================================
 
-    function test_CloseTask_RefundsRemainingBudget() public {
-        // Setup
-        vm.startPrank(user);
-        treasury.createTask{value: BUDGET}(TASK_ID, BUDGET, DEADLINE_SECONDS);
-        treasury.authorizeAgent(TASK_ID, agent);
-        
-        // Spend 0.3 ETH
-        vm.stopPrank();
-        vm.startPrank(agent);
-        treasury.spend(TASK_ID, serviceProvider, 0.3 ether, MEMO);
-        vm.stopPrank();
-        
-        // Close and refund
-        vm.startPrank(user);
-        uint256 userBalanceBefore = user.balance;
-        
+    function test_CloseTask_RefundsRemainingUSDC() public {
+        _setupActiveTask();
+        vm.prank(agent);
+        treasury.spend(TASK_ID, serviceProvider, 300_000, MEMO);
+
+        uint256 before = usdc.balanceOf(user);
+        vm.prank(user);
         treasury.closeTask(TASK_ID);
-        
-        uint256 userBalanceAfter = user.balance;
-        assertEq(userBalanceAfter - userBalanceBefore, 0.7 ether, "Should refund remaining 0.7 ETH");
-        vm.stopPrank();
+
+        assertEq(usdc.balanceOf(user) - before, 700_000, "refund 0.7 USDC");
     }
 
     function test_CloseTask_MarksTaskInactive() public {
-        // Setup
-        vm.startPrank(user);
-        treasury.createTask{value: BUDGET}(TASK_ID, BUDGET, DEADLINE_SECONDS);
-        
+        vm.prank(user);
+        treasury.createTask(TASK_ID, BUDGET, DEADLINE_SECONDS, _permit(BUDGET), "");
+        vm.prank(user);
         treasury.closeTask(TASK_ID);
-        
+
         (, , , , bool active) = treasury.getTask(TASK_ID);
-        assertFalse(active, "Task should be inactive");
-        vm.stopPrank();
+        assertFalse(active);
     }
 
     function test_CloseTask_RevertsIfNotOwner() public {
-        // Setup
-        vm.startPrank(user);
-        treasury.createTask{value: BUDGET}(TASK_ID, BUDGET, DEADLINE_SECONDS);
-        vm.stopPrank();
-        
-        // Unauthorized tries to close
-        vm.startPrank(unauthorized);
+        vm.prank(user);
+        treasury.createTask(TASK_ID, BUDGET, DEADLINE_SECONDS, _permit(BUDGET), "");
+
+        vm.prank(unauthorized);
         vm.expectRevert(MonitorTreasury.NotOwner.selector);
         treasury.closeTask(TASK_ID);
-        vm.stopPrank();
     }
 
-    function test_CloseTask_EmitsRefundEvent() public {
-        // Setup
-        vm.startPrank(user);
-        treasury.createTask{value: BUDGET}(TASK_ID, BUDGET, DEADLINE_SECONDS);
-        
+    function test_CloseTask_EmitsCloseEvent() public {
+        vm.prank(user);
+        treasury.createTask(TASK_ID, BUDGET, DEADLINE_SECONDS, _permit(BUDGET), "");
+
+        vm.prank(user);
         vm.expectEmit(true, true, true, true);
         emit MonitorTreasury.Close(TASK_ID, user, BUDGET);
-        
         treasury.closeTask(TASK_ID);
-        vm.stopPrank();
     }
 
     // =========================================================================
-    // Authorization Tests
+    // authorizeAgent / revokeAgent
     // =========================================================================
 
     function test_AuthorizeAgent_AddsAuthorizedAgent() public {
-        vm.startPrank(user);
-        treasury.createTask{value: BUDGET}(TASK_ID, BUDGET, DEADLINE_SECONDS);
-        
+        vm.prank(user);
+        treasury.createTask(TASK_ID, BUDGET, DEADLINE_SECONDS, _permit(BUDGET), "");
+        vm.prank(user);
         treasury.authorizeAgent(TASK_ID, agent);
-        
-        assertTrue(treasury.isAuthorizedAgent(TASK_ID, agent), "Agent should be authorized");
-        vm.stopPrank();
+
+        assertTrue(treasury.isAuthorizedAgent(TASK_ID, agent));
     }
 
     function test_AuthorizeAgent_RevertsIfNotOwner() public {
-        vm.startPrank(user);
-        treasury.createTask{value: BUDGET}(TASK_ID, BUDGET, DEADLINE_SECONDS);
-        vm.stopPrank();
-        
-        vm.startPrank(unauthorized);
+        vm.prank(user);
+        treasury.createTask(TASK_ID, BUDGET, DEADLINE_SECONDS, _permit(BUDGET), "");
+
+        vm.prank(unauthorized);
         vm.expectRevert(MonitorTreasury.NotOwner.selector);
         treasury.authorizeAgent(TASK_ID, agent);
-        vm.stopPrank();
     }
 
     function test_RevokeAgent_RemovesAuthorization() public {
-        vm.startPrank(user);
-        treasury.createTask{value: BUDGET}(TASK_ID, BUDGET, DEADLINE_SECONDS);
+        vm.prank(user);
+        treasury.createTask(TASK_ID, BUDGET, DEADLINE_SECONDS, _permit(BUDGET), "");
+        vm.prank(user);
         treasury.authorizeAgent(TASK_ID, agent);
-        
+        vm.prank(user);
         treasury.revokeAgent(TASK_ID, agent);
-        
-        assertFalse(treasury.isAuthorizedAgent(TASK_ID, agent), "Agent should be revoked");
-        vm.stopPrank();
+
+        assertFalse(treasury.isAuthorizedAgent(TASK_ID, agent));
     }
 
     // =========================================================================
-    // View Functions
+    // View helpers
     // =========================================================================
 
     function test_GetRemainingBudget_ReturnsCorrectAmount() public {
-        vm.startPrank(user);
-        treasury.createTask{value: BUDGET}(TASK_ID, BUDGET, DEADLINE_SECONDS);
-        treasury.authorizeAgent(TASK_ID, agent);
-        vm.stopPrank();
-        
-        vm.startPrank(agent);
-        treasury.spend(TASK_ID, serviceProvider, 0.3 ether, MEMO);
-        vm.stopPrank();
-        
-        uint256 remaining = treasury.getRemainingBudget(TASK_ID);
-        assertEq(remaining, 0.7 ether, "Remaining should be 0.7 ETH");
+        _setupActiveTask();
+
+        vm.prank(agent);
+        treasury.spend(TASK_ID, serviceProvider, 300_000, MEMO);
+
+        assertEq(treasury.getRemainingBudget(TASK_ID), 700_000);
     }
 
     function test_GetSpent_ReturnsTotalSpent() public {
-        vm.startPrank(user);
-        treasury.createTask{value: BUDGET}(TASK_ID, BUDGET, DEADLINE_SECONDS);
-        treasury.authorizeAgent(TASK_ID, agent);
-        vm.stopPrank();
-        
+        _setupActiveTask();
+
         vm.startPrank(agent);
-        treasury.spend(TASK_ID, serviceProvider, 0.2 ether, MEMO);
-        treasury.spend(TASK_ID, serviceProvider, 0.3 ether, MEMO);
+        treasury.spend(TASK_ID, serviceProvider, 200_000, MEMO);
+        treasury.spend(TASK_ID, serviceProvider, 300_000, MEMO);
         vm.stopPrank();
-        
-        uint256 spent = treasury.getSpent(TASK_ID);
-        assertEq(spent, 0.5 ether, "Spent should be 0.5 ETH");
+
+        assertEq(treasury.getSpent(TASK_ID), 500_000);
     }
 }

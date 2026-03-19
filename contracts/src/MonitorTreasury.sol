@@ -1,15 +1,30 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+import {IERC20} from "./interfaces/IERC20.sol";
+import {ISignatureTransfer} from "./interfaces/ISignatureTransfer.sol";
+
 /**
  * @title MonitorTreasury
- * @dev On-chain treasury for managing task budgets with spend tracking.
+ * @dev On-chain treasury for managing task budgets denominated in a single
+ *      ERC-20 token (e.g. USDC on Tempo).
+ *
+ * Budget custody uses Permit2 for single-step UX: the caller signs a
+ * PermitTransferFrom off-chain; createTask() pulls the tokens atomically
+ * with no prior approve() call required.
  *
  * Features:
- * - Task creation with budget and deadline
+ * - Task creation with USDC budget via Permit2 (single-step, no approve)
  * - Authorized agent spend with budget/deadline enforcement
- * - Record spend for off-chain payments (idempotency)
- * - Close task and refund remaining budget
+ * - Record spend for off-chain payments (idempotency via key)
+ * - Close task and refund remaining budget to owner
+ *
+ * Deployed on Tempo mainnet (chain 4217):
+ *   0x48AF06f2f573977ef8E8AD4ab14008729aBAF1E8  ← original (ETH model)
+ * This version replaces that with USDC + Permit2.
+ *
+ * Permit2 canonical address (Tempo + all EVM chains):
+ *   0x000000000022D473030F116dDEE9F6B43aC78BA3
  */
 contract MonitorTreasury {
     // =========================================================================
@@ -18,7 +33,7 @@ contract MonitorTreasury {
 
     error TaskExists();
     error TaskNotFound();
-    error BudgetMismatch();
+    error InvalidToken();       // permit token != treasury token
     error ZeroBudget();
     error Unauthorized();
     error TaskInactive();
@@ -72,11 +87,24 @@ contract MonitorTreasury {
         uint256 budget;
         uint256 spent;
         uint256 deadline;
-        bool active;
+        bool    active;
     }
 
     // =========================================================================
-    // State Variables
+    // Immutables
+    // =========================================================================
+
+    /// @notice The ERC-20 token used for all task budgets (e.g. USDC).
+    IERC20 public immutable TOKEN;
+
+    /// @notice The Permit2 contract used for single-step budget deposits.
+    ISignatureTransfer public immutable PERMIT2;
+
+    /// @notice Contract owner (deployer).
+    address public immutable OWNER;
+
+    // =========================================================================
+    // State
     // =========================================================================
 
     /// @notice Task ID => Task details
@@ -88,15 +116,16 @@ contract MonitorTreasury {
     /// @notice Task ID => Idempotency Key => Is used
     mapping(bytes32 => mapping(bytes32 => bool)) public usedIdempotencyKeys;
 
-    /// @notice Contract owner
-    address public immutable owner;
-
     // =========================================================================
     // Constructor
     // =========================================================================
 
-    constructor() {
-        owner = msg.sender;
+    /// @param token_   ERC-20 token address (e.g. USDC on Tempo)
+    /// @param permit2_ Permit2 contract address
+    constructor(address token_, address permit2_) {
+        TOKEN   = IERC20(token_);
+        PERMIT2 = ISignatureTransfer(permit2_);
+        OWNER   = msg.sender;
     }
 
     // =========================================================================
@@ -104,16 +133,12 @@ contract MonitorTreasury {
     // =========================================================================
 
     modifier onlyTaskOwner(bytes32 taskId) {
-        if (tasks[taskId].owner != msg.sender) {
-            revert NotOwner();
-        }
+        if (tasks[taskId].owner != msg.sender) revert NotOwner();
         _;
     }
 
     modifier taskExists(bytes32 taskId) {
-        if (tasks[taskId].owner == address(0)) {
-            revert TaskNotFound();
-        }
+        if (tasks[taskId].owner == address(0)) revert TaskNotFound();
         _;
     }
 
@@ -126,75 +151,82 @@ contract MonitorTreasury {
     }
 
     // =========================================================================
-    // External Functions
+    // External — task lifecycle
     // =========================================================================
 
     /**
-     * @notice Create a new task with budget and deadline.
-     * @param taskId Unique identifier for the task
-     * @param budget Total budget in wei
-     * @param deadlineOffset Seconds from now until deadline
+     * @notice Create a new task, pulling budget from caller via Permit2.
+     *
+     * The caller must have signed a Permit2 PermitTransferFrom off-chain.
+     * No prior ERC-20 approve() to this contract is needed.
+     *
+     * @param taskId          Unique task identifier
+     * @param budget          USDC amount to lock (must match permit.permitted.amount)
+     * @param deadlineOffset  Seconds from now until task expires
+     * @param permit          Signed Permit2 authorization (token, amount, nonce, deadline)
+     * @param signature       Caller's EIP-712 signature over the permit
      */
     function createTask(
         bytes32 taskId,
         uint256 budget,
-        uint256 deadlineOffset
-    ) external payable {
-        // Validate input
-        if (budget == 0) {
-            revert ZeroBudget();
-        }
-        if (msg.value != budget) {
-            revert BudgetMismatch();
-        }
-        if (tasks[taskId].owner != address(0)) {
-            revert TaskExists();
-        }
+        uint256 deadlineOffset,
+        ISignatureTransfer.PermitTransferFrom calldata permit,
+        bytes calldata signature
+    ) external {
+        if (budget == 0) revert ZeroBudget();
+        if (tasks[taskId].owner != address(0)) revert TaskExists();
+        if (permit.permitted.token != address(TOKEN)) revert InvalidToken();
 
-        // Create task
+        // Single-step: pull USDC from caller atomically via Permit2.
+        // Permit2 validates the signature, nonce, deadline, and amount.
+        PERMIT2.permitTransferFrom(
+            permit,
+            ISignatureTransfer.SignatureTransferDetails({
+                to:              address(this),
+                requestedAmount: budget
+            }),
+            msg.sender,
+            signature
+        );
+
+        uint256 deadline = block.timestamp + deadlineOffset;
         tasks[taskId] = Task({
-            owner: msg.sender,
-            budget: budget,
-            spent: 0,
-            deadline: block.timestamp + deadlineOffset,
-            active: true
+            owner:    msg.sender,
+            budget:   budget,
+            spent:    0,
+            deadline: deadline,
+            active:   true
         });
 
-        emit TaskCreated(taskId, msg.sender, budget, block.timestamp + deadlineOffset);
+        emit TaskCreated(taskId, msg.sender, budget, deadline);
     }
 
     /**
      * @notice Authorize an agent to spend on behalf of a task.
-     * @param taskId Task identifier
-     * @param agent Address to authorize
      */
-    function authorizeAgent(
-        bytes32 taskId,
-        address agent
-    ) external onlyTaskOwner(taskId) taskExists(taskId) {
+    function authorizeAgent(bytes32 taskId, address agent)
+        external
+        onlyTaskOwner(taskId)
+        taskExists(taskId)
+    {
         authorizedAgents[taskId][agent] = true;
         emit AgentAuthorized(taskId, agent);
     }
 
     /**
      * @notice Revoke an agent's authorization.
-     * @param taskId Task identifier
-     * @param agent Address to revoke
      */
-    function revokeAgent(
-        bytes32 taskId,
-        address agent
-    ) external onlyTaskOwner(taskId) taskExists(taskId) {
+    function revokeAgent(bytes32 taskId, address agent)
+        external
+        onlyTaskOwner(taskId)
+        taskExists(taskId)
+    {
         authorizedAgents[taskId][agent] = false;
         emit AgentRevoked(taskId, agent);
     }
 
     /**
-     * @notice Spend from task budget, transferring to recipient.
-     * @param taskId Task identifier
-     * @param recipient Address to receive funds
-     * @param amount Amount to spend in wei
-     * @param memo 32-byte memo for tracking
+     * @notice Spend from task budget, transferring USDC to recipient.
      */
     function spend(
         bytes32 taskId,
@@ -203,30 +235,19 @@ contract MonitorTreasury {
         bytes32 memo
     ) external onlyAuthorized(taskId) taskExists(taskId) {
         Task storage task = tasks[taskId];
-
-        // Validate task state
         _validateTaskActive(task);
         _validateDeadline(task);
         _validateBudget(task, amount);
 
-        // Update state
         task.spent += amount;
 
-        // Transfer funds
-        (bool success, ) = recipient.call{value: amount}("");
-        if (!success) {
-            revert TransferFailed();
-        }
+        if (!TOKEN.transfer(recipient, amount)) revert TransferFailed();
 
         emit Spend(taskId, recipient, amount, memo);
     }
 
     /**
-     * @notice Record a spend without transferring (for off-chain payments).
-     * @param taskId Task identifier
-     * @param recipient Address that would receive funds (for tracking)
-     * @param amount Amount spent in wei
-     * @param memo 32-byte memo for tracking
+     * @notice Record a spend without transferring (for off-chain / MPP payments).
      */
     function recordSpend(
         bytes32 taskId,
@@ -235,25 +256,17 @@ contract MonitorTreasury {
         bytes32 memo
     ) external onlyAuthorized(taskId) taskExists(taskId) {
         Task storage task = tasks[taskId];
-
-        // Validate task state
         _validateTaskActive(task);
         _validateDeadline(task);
         _validateBudget(task, amount);
 
-        // Update state only (no transfer)
         task.spent += amount;
 
         emit RecordSpend(taskId, recipient, amount, memo, bytes32(0));
     }
 
     /**
-     * @notice Record a spend with idempotency key (for direct MPP).
-     * @param taskId Task identifier
-     * @param recipient Address that would receive funds (for tracking)
-     * @param amount Amount spent in wei
-     * @param memo 32-byte memo for tracking
-     * @param idempotencyKey Unique key to prevent duplicates
+     * @notice Record a spend with idempotency key (prevents duplicate off-chain records).
      */
     function recordSpend(
         bytes32 taskId,
@@ -262,117 +275,80 @@ contract MonitorTreasury {
         bytes32 memo,
         bytes32 idempotencyKey
     ) external onlyAuthorized(taskId) taskExists(taskId) {
+        if (usedIdempotencyKeys[taskId][idempotencyKey]) revert DuplicateIdempotency();
+
         Task storage task = tasks[taskId];
-
-        // Check idempotency
-        if (usedIdempotencyKeys[taskId][idempotencyKey]) {
-            revert DuplicateIdempotency();
-        }
-
-        // Validate task state
         _validateTaskActive(task);
         _validateDeadline(task);
         _validateBudget(task, amount);
 
-        // Mark idempotency key as used
         usedIdempotencyKeys[taskId][idempotencyKey] = true;
-
-        // Update state only (no transfer)
         task.spent += amount;
 
         emit RecordSpend(taskId, recipient, amount, memo, idempotencyKey);
     }
 
     /**
-     * @notice Close task and refund remaining budget.
-     * @param taskId Task identifier
+     * @notice Close task and refund unspent USDC to owner.
      */
-    function closeTask(bytes32 taskId) external onlyTaskOwner(taskId) taskExists(taskId) {
+    function closeTask(bytes32 taskId)
+        external
+        onlyTaskOwner(taskId)
+        taskExists(taskId)
+    {
         Task storage task = tasks[taskId];
+        uint256 refund = task.budget - task.spent;
 
-        uint256 refundAmount = task.budget - task.spent;
-
-        // Mark inactive
         task.active = false;
 
-        // Refund remaining budget
-        if (refundAmount > 0) {
-            (bool success, ) = task.owner.call{value: refundAmount}("");
-            if (!success) {
-                revert TransferFailed();
-            }
+        if (refund > 0) {
+            if (!TOKEN.transfer(task.owner, refund)) revert TransferFailed();
         }
 
-        emit Close(taskId, task.owner, refundAmount);
+        emit Close(taskId, task.owner, refund);
     }
 
     // =========================================================================
-    // View Functions
+    // View functions
     // =========================================================================
 
-    /**
-     * @notice Get task details.
-     */
     function getTask(bytes32 taskId) external view returns (
         address taskOwner,
         uint256 budget,
         uint256 spent,
         uint256 deadline,
-        bool active
+        bool    active
     ) {
-        Task storage task = tasks[taskId];
-        return (task.owner, task.budget, task.spent, task.deadline, task.active);
+        Task storage t = tasks[taskId];
+        return (t.owner, t.budget, t.spent, t.deadline, t.active);
     }
 
-    /**
-     * @notice Get remaining budget for a task.
-     */
     function getRemainingBudget(bytes32 taskId) external view returns (uint256) {
-        Task storage task = tasks[taskId];
-        return task.budget - task.spent;
+        Task storage t = tasks[taskId];
+        return t.budget - t.spent;
     }
 
-    /**
-     * @notice Get total spent for a task.
-     */
     function getSpent(bytes32 taskId) external view returns (uint256) {
         return tasks[taskId].spent;
     }
 
-    /**
-     * @notice Check if an agent is authorized for a task.
-     */
     function isAuthorizedAgent(bytes32 taskId, address agent) external view returns (bool) {
         return authorizedAgents[taskId][agent];
     }
 
     // =========================================================================
-    // Internal Functions
+    // Internal
     // =========================================================================
 
     function _validateTaskActive(Task storage task) internal view {
-        if (!task.active) {
-            revert TaskInactive();
-        }
+        if (!task.active) revert TaskInactive();
     }
 
     function _validateDeadline(Task storage task) internal view {
-        if (block.timestamp > task.deadline) {
-            revert DeadlinePassed();
-        }
+        if (block.timestamp > task.deadline) revert DeadlinePassed();
     }
 
     function _validateBudget(Task storage task, uint256 amount) internal view {
-        if (task.spent + amount > task.budget) {
-            revert BudgetExceeded();
-        }
-    }
-
-    // =========================================================================
-    // Receive Function
-    // =========================================================================
-
-    receive() external payable {
-        // Accept direct transfers (for refunds, etc.)
+        if (task.spent + amount > task.budget) revert BudgetExceeded();
     }
 }
