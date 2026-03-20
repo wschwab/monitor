@@ -38,6 +38,7 @@ export interface FeedEntry {
   timestamp: number;
   amountWei?: string;
   serviceId?: string;
+  payload?: unknown;
 }
 
 export async function createTask(payload: CreateTaskPayload): Promise<{ task: TaskRecord }> {

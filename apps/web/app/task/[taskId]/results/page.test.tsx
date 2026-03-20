@@ -80,7 +80,7 @@ describe('ResultsPage', () => {
     expect(screen.getByText(/Executive Summary/i)).toBeInTheDocument();
     expect(screen.getByText(/Spend totals reconciled/i)).toBeInTheDocument();
     expect(screen.getByText(/Refund due/i)).toBeInTheDocument();
-    expect(screen.getByText(/0.7000 ETH/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/0.7000 ETH/i)).toHaveLength(2);
     expect(screen.getByText(/Premium dossier lookup/i)).toBeInTheDocument();
     expect(screen.getByText(/Direct market data query/i)).toBeInTheDocument();
     expect(screen.getByText(/LLM synthesis cost/i)).toBeInTheDocument();
