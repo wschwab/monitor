@@ -18,6 +18,12 @@ export interface TaskFormPayload {
   budgetEth: number;
   deadlineSeconds: number;
   sources: string[];
+  enhancements: {
+    coverImage: boolean;
+    audioBriefing: boolean;
+    uploadDelivery: boolean;
+    emailDelivery: boolean;
+  };
 }
 
 export interface TaskFormProps {
@@ -48,6 +54,7 @@ export function TaskForm({ onSubmit, disabled = false }: TaskFormProps) {
   const [budgetEth, setBudgetEth] = useState(1);
   const [deadlineHours, setDeadlineHours] = useState(1);
   const [selectedSources, setSelectedSources] = useState<string[]>(DEFAULT_SOURCES);
+  const [coverImage, setCoverImage] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const isValid = prompt.trim().length > 0 && budgetEth > 0 && selectedSources.length > 0;
@@ -69,6 +76,12 @@ export function TaskForm({ onSubmit, disabled = false }: TaskFormProps) {
         budgetEth,
         deadlineSeconds: deadlineHours * 3600,
         sources: selectedSources,
+        enhancements: {
+          coverImage,
+          audioBriefing: false,
+          uploadDelivery: false,
+          emailDelivery: false,
+        },
       });
     } finally {
       setLoading(false);
@@ -170,6 +183,21 @@ export function TaskForm({ onSubmit, disabled = false }: TaskFormProps) {
             </label>
           ))}
         </div>
+      </div>
+
+      <div>
+        <p style={{ marginBottom: '0.75rem', fontWeight: 600 }}>Enhancements</p>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            aria-label="Cover image"
+            checked={coverImage}
+            onChange={() => setCoverImage((value) => !value)}
+            disabled={disabled || loading}
+          />
+          <span>Cover image</span>
+          <span style={{ fontSize: '0.8rem', color: '#888', marginLeft: 'auto' }}>$0.20/report</span>
+        </label>
       </div>
 
       {/* Submit */}

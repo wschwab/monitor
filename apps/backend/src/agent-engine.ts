@@ -11,6 +11,8 @@ import { TaskManager } from './task-manager';
 import { LLMAdapter, LLMCallFn, SynthesisRequest, ToolResultData } from './tools/llm';
 import { ExaAdapter } from './tools/exa';
 import { getToolCost } from './tools/definitions';
+import { CoverImageResult, generateCoverImage } from './tools/cover-image';
+import { PremiumExecutor, PremiumProvider } from './premium-executor';
 
 // =============================================================================
 // Types
@@ -38,9 +40,23 @@ export interface SpendSummary {
   entryCount: number;
 }
 
+interface ToolSpendEntry {
+  id: string;
+  amountWei: bigint;
+  path: 'TREASURY' | 'DIRECT_MPP' | 'LLM';
+  serviceId: string;
+  memo: string;
+  queryIndex: number;
+}
+
+interface ToolExecutionResult extends ToolResultData {
+  spendEntry?: ToolSpendEntry;
+}
+
 export interface RunResult {
   success: boolean;
   report?: string;
+  coverImage?: CoverImageResult;
   partial?: boolean;
   aborted?: boolean;
   spendSummary?: SpendSummary;
@@ -58,6 +74,7 @@ export interface SynthesizeOptions {
 // =============================================================================
 
 const LLM_SYNTHESIS_COST_WEI = BigInt('500000000000000000'); // 0.5 ETH reserve
+const COVER_IMAGE_COST_WEI = getToolCost('cover-image');
 const PARTIAL_REPORT_BUDGET_MSG =
   '> **Note:** This is a partial report. The task budget was insufficient to complete all planned research steps.';
 
@@ -73,6 +90,7 @@ export class AgentEngine {
   private llm: LLMAdapter;
   private stepDelayMs: number;
   private exaApiKey: string;
+  private premiumExecutor: PremiumExecutor;
 
   constructor(options: AgentEngineOptions) {
     this.spendLedger = options.spendLedger;
@@ -81,6 +99,11 @@ export class AgentEngine {
     this.fallbackToDemo = options.fallbackToDemo ?? true;
     this.stepDelayMs = options.stepDelayMs ?? 0;
     this.exaApiKey = options.exaApiKey ?? process.env['EXA_API_KEY'] ?? '';
+    this.premiumExecutor = new PremiumExecutor({
+      spendLedger: options.spendLedger,
+      treasuryAddress:
+        process.env['TREASURY_ADDRESS'] || '0x0000000000000000000000000000000000000000',
+    });
 
     this.llm = new LLMAdapter({
       apiKey: options.llmApiKey,
@@ -125,7 +148,8 @@ export class AgentEngine {
       // Budget check (reserve LLM cost)
       const remaining = this.spendLedger.getRemainingBudget(taskId);
       const toolCost = getToolCost(plan.toolId);
-      if (remaining < toolCost + LLM_SYNTHESIS_COST_WEI) {
+      const enhancementReserve = task.enhancements.coverImage ? COVER_IMAGE_COST_WEI : BigInt(0);
+      if (remaining < toolCost + LLM_SYNTHESIS_COST_WEI + enhancementReserve) {
         partial = true;
         break;
       }
@@ -140,7 +164,22 @@ export class AgentEngine {
       // Execute tool
       const result = await this.executeTool(taskId, plan);
       if (result !== null) {
-        toolResults.push(result);
+        toolResults.push({ toolId: result.toolId, data: result.data });
+
+        if (result.spendEntry) {
+          this.taskManager.addFeedEntry(taskId, {
+            type: 'spend',
+            message: `Spent ${this.formatEth(result.spendEntry.amountWei)} on ${result.spendEntry.serviceId}`,
+            timestamp: Date.now(),
+            amountWei: result.spendEntry.amountWei,
+            serviceId: result.spendEntry.serviceId,
+            payload: {
+              path: result.spendEntry.path,
+              memo: result.spendEntry.memo,
+              queryIndex: result.spendEntry.queryIndex,
+            },
+          });
+        }
       }
 
       if (this.stepDelayMs > 0) {
@@ -168,6 +207,7 @@ export class AgentEngine {
     });
 
     let report: string;
+    let coverImage: CoverImageResult | undefined;
 
     if (partial || toolResults.length === 0) {
       // Insufficient budget for a full run — produce partial report
@@ -193,11 +233,85 @@ export class AgentEngine {
         idempotencyKey,
       });
 
+      const llmSpend = this.spendLedger.getTaskEntries(taskId).at(-1);
+      if (llmSpend?.serviceId === 'llm-synthesize') {
+        this.taskManager.addFeedEntry(taskId, {
+          type: 'spend',
+          message: `Spent ${this.formatEth(llmSpend.amountWei)} on ${llmSpend.serviceId}`,
+          timestamp: llmSpend.timestamp,
+          amountWei: llmSpend.amountWei,
+          serviceId: llmSpend.serviceId,
+          payload: {
+            path: llmSpend.path,
+            memo: llmSpend.memo,
+            queryIndex: llmSpend.queryIndex,
+          },
+        });
+      }
+
       report = await this.synthesize({
         prompt: task.prompt,
         toolResults,
         taskId,
       });
+    }
+
+    if (task.enhancements.coverImage) {
+      if (this.spendLedger.getRemainingBudget(taskId) >= COVER_IMAGE_COST_WEI) {
+        try {
+          this.taskManager.transitionStatus(taskId, 'ENHANCING');
+        } catch {
+          // may already be terminal
+        }
+
+        this.taskManager.addFeedEntry(taskId, {
+          type: 'enhancement',
+          message: 'Generating cover image...',
+          timestamp: Date.now(),
+        });
+
+        coverImage = generateCoverImage({
+          prompt: task.prompt,
+          report,
+          taskId,
+        });
+
+        const enhancementSpend = this.spendLedger.recordSpend({
+          taskId,
+          serviceId: 'cover-image',
+          amountWei: COVER_IMAGE_COST_WEI,
+          path: 'DIRECT_MPP',
+          idempotencyKey: `cover-image-${taskId}-${Date.now()}`,
+        });
+
+        if (enhancementSpend.entry) {
+          this.taskManager.addFeedEntry(taskId, {
+            type: 'spend',
+            message: `Spent ${this.formatEth(enhancementSpend.entry.amountWei)} on ${enhancementSpend.entry.serviceId}`,
+            timestamp: enhancementSpend.entry.timestamp,
+            amountWei: enhancementSpend.entry.amountWei,
+            serviceId: enhancementSpend.entry.serviceId,
+            payload: {
+              path: enhancementSpend.entry.path,
+              memo: enhancementSpend.entry.memo,
+              queryIndex: enhancementSpend.entry.queryIndex,
+            },
+          });
+        }
+
+        this.taskManager.addFeedEntry(taskId, {
+          type: 'enhancement',
+          message: 'Cover image ready',
+          timestamp: Date.now(),
+          payload: { coverImage },
+        });
+      } else {
+        this.taskManager.addFeedEntry(taskId, {
+          type: 'enhancement',
+          message: 'Skipped cover image because the remaining budget was too low',
+          timestamp: Date.now(),
+        });
+      }
     }
 
     // ── Finalize ─────────────────────────────────────────────────────────────
@@ -207,18 +321,25 @@ export class AgentEngine {
       // may already be terminal
     }
 
+    const totals = this.spendLedger.getSpendTotals(taskId);
+    const entries = this.spendLedger.getTaskEntries(taskId);
+
     this.taskManager.addFeedEntry(taskId, {
       type: 'complete',
       message: partial ? 'Partial report ready (budget exhausted)' : 'Report complete',
       timestamp: Date.now(),
+      payload: {
+        report,
+        partial,
+        coverImage,
+        spendSummary: totals,
+      },
     });
-
-    const totals = this.spendLedger.getSpendTotals(taskId);
-    const entries = this.spendLedger.getTaskEntries(taskId);
 
     return {
       success: true,
       report,
+      coverImage,
       partial,
       spendSummary: {
         totalWei: totals.totalWei,
@@ -255,8 +376,9 @@ export class AgentEngine {
     if (!task) return [];
 
     const remaining = this.spendLedger.getRemainingBudget(taskId);
-    // Must keep enough for LLM synthesis
-    const available = remaining - LLM_SYNTHESIS_COST_WEI;
+    const enhancementReserve = task.enhancements.coverImage ? COVER_IMAGE_COST_WEI : BigInt(0);
+    // Must keep enough for LLM synthesis and requested cover image.
+    const available = remaining - LLM_SYNTHESIS_COST_WEI - enhancementReserve;
     if (available <= BigInt(0)) return [];
 
     const plans: ToolPlan[] = [];
@@ -286,7 +408,7 @@ export class AgentEngine {
   private async executeTool(
     taskId: string,
     plan: ToolPlan
-  ): Promise<ToolResultData | null> {
+  ): Promise<ToolExecutionResult | null> {
     const task = this.taskManager.getTask(taskId);
     if (!task) return null;
 
@@ -306,7 +428,40 @@ export class AgentEngine {
         });
 
         if (result.success) {
-          return { toolId: 'exa', data: result.data };
+          return {
+            toolId: 'exa',
+            data: result.data,
+            spendEntry: result.spendEntry
+              ? {
+                  ...result.spendEntry,
+                  memo: result.spendEntry.memo,
+                  queryIndex: result.spendEntry.queryIndex,
+                }
+              : undefined,
+          };
+        }
+        return null;
+      }
+
+      if (plan.toolId === 'cern-temporal' || plan.toolId === 'cia-declassified') {
+        const result = await this.premiumExecutor.fetchPremiumData({
+          taskId,
+          provider: plan.toolId as PremiumProvider,
+          query: (plan.parameters.query as string) || task.prompt,
+        });
+
+        if (result.success) {
+          return {
+            toolId: plan.toolId,
+            data: result.data,
+            spendEntry: result.spendEntry
+              ? {
+                  ...result.spendEntry,
+                  memo: result.spendEntry.memo,
+                  queryIndex: result.spendEntry.queryIndex,
+                }
+              : undefined,
+          };
         }
         return null;
       }
@@ -314,8 +469,10 @@ export class AgentEngine {
       // Generic demo stub for other tools
       if (this.demoMode) {
         const cost = getToolCost(plan.toolId);
+        let spendEntry: ToolSpendEntry | undefined;
+
         if (cost > BigInt(0)) {
-          this.spendLedger.recordSpend({
+          const spendResult = this.spendLedger.recordSpend({
             taskId,
             serviceId: plan.toolId,
             amountWei: cost,
@@ -324,10 +481,23 @@ export class AgentEngine {
               : 'DIRECT_MPP',
             idempotencyKey: `${plan.toolId}-${taskId}-${Date.now()}`,
           });
+
+          if (spendResult.entry) {
+            spendEntry = {
+              id: spendResult.entry.id,
+              amountWei: spendResult.entry.amountWei,
+              path: spendResult.entry.path,
+              serviceId: spendResult.entry.serviceId,
+              memo: spendResult.entry.memo,
+              queryIndex: spendResult.entry.queryIndex,
+            };
+          }
         }
+
         return {
           toolId: plan.toolId,
           data: { result: `Demo data from ${plan.toolId}`, query: plan.parameters.query },
+          spendEntry,
         };
       }
 
@@ -339,5 +509,9 @@ export class AgentEngine {
 
   private delay(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  private formatEth(wei: bigint): string {
+    return `${(Number(wei) / 1e18).toFixed(4)} ETH`;
   }
 }

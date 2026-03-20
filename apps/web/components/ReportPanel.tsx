@@ -1,11 +1,18 @@
 'use client';
 
+interface CoverImage {
+  imageUrl: string;
+  title: string;
+  alt?: string;
+}
+
 interface ReportPanelProps {
   prompt: string;
   report: string;
+  coverImage?: CoverImage;
 }
 
-export function ReportPanel({ prompt, report }: ReportPanelProps) {
+export function ReportPanel({ prompt, report, coverImage }: ReportPanelProps) {
   return (
     <section
       style={{
@@ -19,6 +26,24 @@ export function ReportPanel({ prompt, report }: ReportPanelProps) {
         <h2 style={{ margin: 0, fontSize: '1.15rem' }}>Research Report</h2>
         <p style={{ margin: '0.5rem 0 0', color: '#94a3b8' }}>{prompt}</p>
       </div>
+      {coverImage ? (
+        <figure style={{ margin: '0 0 1rem' }}>
+          <img
+            src={coverImage.imageUrl}
+            alt={coverImage.alt ?? coverImage.title}
+            style={{
+              display: 'block',
+              width: '100%',
+              borderRadius: '10px',
+              border: '1px solid #1e293b',
+              objectFit: 'cover',
+            }}
+          />
+          <figcaption style={{ marginTop: '0.6rem', color: '#94a3b8', fontSize: '0.9rem' }}>
+            {coverImage.title}
+          </figcaption>
+        </figure>
+      ) : null}
       {report ? (
         <pre
           style={{

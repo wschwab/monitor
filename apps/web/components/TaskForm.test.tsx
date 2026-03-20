@@ -56,6 +56,11 @@ describe('TaskForm', () => {
       expect(screen.getByRole('button', { name: /start research/i })).toBeInTheDocument();
     });
 
+    it('renders cover image enhancement toggle', () => {
+      renderForm();
+      expect(screen.getByRole('checkbox', { name: /cover image/i })).toBeInTheDocument();
+    });
+
     it('exa is checked by default', () => {
       renderForm();
       expect(screen.getByRole('checkbox', { name: /exa/i })).toBeChecked();
@@ -103,6 +108,7 @@ describe('TaskForm', () => {
       expect(payload.sources).toContain('exa');
       expect(typeof payload.budgetEth).toBe('number');
       expect(payload.budgetEth).toBe(1);
+      expect(payload.enhancements.coverImage).toBe(false);
     });
 
     it('includes selected sources in payload', async () => {
@@ -118,6 +124,20 @@ describe('TaskForm', () => {
       const payload = mockSubmit.mock.calls[0][0];
       expect(payload.sources).toContain('exa');
       expect(payload.sources).toContain('perplexity');
+    });
+
+    it('includes the selected cover-image enhancement in the payload', async () => {
+      const user = userEvent.setup();
+      renderForm();
+
+      await user.type(screen.getByRole('textbox', { name: /prompt/i }), 'test');
+      await user.clear(screen.getByRole('spinbutton', { name: /budget/i }));
+      await user.type(screen.getByRole('spinbutton', { name: /budget/i }), '1');
+      await user.click(screen.getByRole('checkbox', { name: /cover image/i }));
+      await user.click(screen.getByRole('button', { name: /start research/i }));
+
+      const payload = mockSubmit.mock.calls[0][0];
+      expect(payload.enhancements.coverImage).toBe(true);
     });
 
     it('shows loading state after submit', async () => {

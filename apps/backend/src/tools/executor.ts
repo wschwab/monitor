@@ -15,6 +15,7 @@ import {
 import { PremiumExecutor } from '../premium-executor';
 import { ExaAdapter } from './exa';
 import { SpendLedger } from '../spend-ledger';
+import { generateCoverImage } from './cover-image';
 
 // =============================================================================
 // Types
@@ -291,14 +292,16 @@ export class FakeToolExecutor {
   }
 
   private executeCoverImage(call: ToolCall, context: ExecutionContext, costWei: bigint): ToolResult {
+    const coverImage = generateCoverImage({
+      prompt: (call.parameters.prompt as string) || context.query,
+      report: (call.parameters.report as string) || '',
+      taskId: context.taskId,
+    });
+
     return {
       success: true,
       toolId: 'cover-image',
-      data: {
-        imageUrl: 'https://example.com/mock-cover-image.png',
-        title: call.parameters.title,
-        generatedAt: new Date().toISOString(),
-      },
+      data: coverImage,
       costWei,
     };
   }

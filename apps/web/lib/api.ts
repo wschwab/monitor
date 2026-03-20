@@ -11,6 +11,12 @@ export interface CreateTaskPayload {
   budgetEth: number;
   deadlineSeconds: number;
   sources: string[];
+  enhancements: {
+    coverImage: boolean;
+    audioBriefing: boolean;
+    uploadDelivery: boolean;
+    emailDelivery: boolean;
+  };
   owner?: string;
 }
 
@@ -53,7 +59,7 @@ export async function createTask(payload: CreateTaskPayload): Promise<{ task: Ta
       deadlineSeconds: payload.deadlineSeconds,
       owner: payload.owner ?? '0x0000000000000000000000000000000000000000',
       sources: payload.sources,
-      enhancements: {},
+      enhancements: payload.enhancements,
     }),
   });
 
@@ -73,4 +79,17 @@ export async function rehydrateTask(taskId: string): Promise<RehydrateResult> {
 
 export async function stopTask(taskId: string): Promise<void> {
   await fetch(`${BACKEND_URL}/tasks/${taskId}/stop`, { method: 'POST' });
+}
+
+export async function runTask(taskId: string): Promise<{ result: unknown }> {
+  const res = await fetch(`${BACKEND_URL}/tasks/${taskId}/run`, {
+    method: 'POST',
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Unknown error' }));
+    throw new Error((err as any).error ?? `HTTP ${res.status}`);
+  }
+
+  return res.json();
 }

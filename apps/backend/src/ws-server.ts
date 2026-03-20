@@ -7,6 +7,12 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { FeedEntry } from '@monitor/shared';
 
+function serializeForSocket(value: unknown): string {
+  return JSON.stringify(value, (_key, innerValue) =>
+    typeof innerValue === 'bigint' ? innerValue.toString() : innerValue
+  );
+}
+
 // =============================================================================
 // Types
 // =============================================================================
@@ -104,7 +110,7 @@ export class WSServer {
       return;
     }
 
-    const messageStr = JSON.stringify(message);
+    const messageStr = serializeForSocket(message);
 
     taskClients.forEach((ws) => {
       if (ws.readyState === WebSocket.OPEN) {

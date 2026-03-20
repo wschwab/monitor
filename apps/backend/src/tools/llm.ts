@@ -1,3 +1,5 @@
+import { getDemoPromptFixture } from '../demo/prompt-fixtures';
+
 /**
  * LLM Synthesis Tool
  *
@@ -45,6 +47,11 @@ Source Analysis, and Conclusion. Keep it concise but comprehensive.`;
 // =============================================================================
 
 function demoSynthesize(request: SynthesisRequest): string {
+  const fixture = getDemoPromptFixture(request.prompt);
+  if (fixture) {
+    return fixture.report;
+  }
+
   const sourceList = request.toolResults.map(r => `- **${r.toolId}**`).join('\n');
   const hasResults = request.toolResults.some(r => {
     const d = r.data as any;

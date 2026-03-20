@@ -108,23 +108,64 @@ Most AI demos are "trust me bro" systems. We wanted "here's the blockchain recei
    - Refund confirmation
    - Option to download or share
 
-## 🚀 Quick Start
+## 🚀 Run Monitor Locally
 
+### Prerequisites
+- Node.js 20+
+- pnpm 9+
+- A copy of `.env` (start from `.env.example`)
+
+### 1) Install dependencies
 ```bash
-# Clone (you already did this, smart person)
 git clone git@github.com:wschwab/monitor.git
 cd monitor
-
-# Install dependencies
 pnpm install
+cp .env.example .env
+```
 
-# Run tests (all should pass, we have 144 of them)
+### 2) Pick a mode
+
+**Fastest local/demo setup**
+- Set `DEMO_MODE=true` in `.env`
+- Leave `LLM_PROVIDER=mock`
+- Local web runs with the dev funding bypass enabled by default, so you can exercise the full UI without a Tempo wallet popup
+
+**Live/Tempo setup**
+- Set `DEMO_MODE=false`
+- Fill in `TEMPO_RPC_URL`
+- Keep `TREASURY_ADDRESS=0x95c9009c82FEd445dEDeecEfC2abA6edEb920941`
+- Add any provider keys you want to exercise (`EXA_API_KEY`, `CERN_API_KEY`, etc.)
+
+### 3) Start the app
+```bash
+pnpm dev
+```
+
+That starts the local services on:
+- Web UI: `http://localhost:3000`
+- Backend API: `http://localhost:3001`
+- WebSocket server: `ws://localhost:3002`
+- Data proxy: `http://localhost:3003`
+
+### 4) Use the app
+1. Open `http://localhost:3000`
+2. Create a task from the home page
+3. On the live feed page, click **Use Dev Funding Bypass** (demo/local) or fund with Tempo wallet (live mode)
+4. Wait for the task to complete
+5. Open the results page to inspect the report, spend audit, refund, and any generated cover image
+
+### Useful commands
+```bash
+# Run the full test suite
 pnpm test
 
-# Start development servers
-pnpm dev
+# Run the backend smoke flow directly
+pnpm demo:smoke
 
-# The backend runs on :3001, frontend on :3000, proxy on :3002
+# Start individual services instead of turbo
+pnpm --filter @monitor/backend dev
+pnpm --filter @monitor/web dev
+pnpm --filter @monitor/data-proxy dev
 ```
 
 ## 🧩 Project Structure
@@ -182,11 +223,16 @@ ws.on('message', (event) => {
 - These use direct MPP payment flow
 
 ### 5. Demo Mode
-Run without spending real money:
+Demo mode returns deterministic fixtures for research, synthesis, and enhancement flows, so you can exercise the full product without spending real money.
+
 ```bash
-DEMO_MODE=true pnpm dev
+# In .env
+DEMO_MODE=true
+LLM_PROVIDER=mock
+
+# Then start normally
+pnpm dev
 ```
-All API calls return deterministic fixtures. Perfect for development and testing.
 
 ## 🧪 Testing (We Actually Do This)
 
@@ -196,7 +242,7 @@ We follow strict TDD (Test-Driven Development):
 2. **GREEN**: Write minimal code to pass
 3. **REFACTOR**: Clean up
 
-Current test count: **144 tests passing**
+Use the workspace scripts to validate everything:
 
 ```bash
 # Run all tests
@@ -210,18 +256,16 @@ pnpm test --filter @monitor/contracts
 pnpm test --coverage
 ```
 
-## 📊 Task Waves
+## 📊 MVP Status
 
-| Wave | Task | Status |
-|------|------|--------|
-| 0 | Workspace setup | ✅ |
-| 1 | Shared types & spend semantics | ✅ |
-| 2 | MonitorTreasury contract | ✅ |
-| 3 | Proxy + Premium providers | ✅ |
-| 4 | **Task manager + WebSocket** | 🔄 |
-| 5 | Real MPP adapters | ⏳ |
-| 6 | Frontend UI | ⏳ |
-| 7 | Polish + Demo mode | ⏳ |
+The Monitor MVP task waves are complete, including:
+- shared spend semantics and memo encoding
+- Tempo-backed treasury contract deployment
+- proxy/provider adapters
+- backend task manager + WebSocket feed
+- results/audit UI
+- end-to-end provider, audit, and browser verification flows
+- demo-mode enhancements and polish
 
 ## 🎓 The Philosophy
 

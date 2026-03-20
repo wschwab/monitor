@@ -30,6 +30,8 @@ export interface PremiumResult {
     amountWei: bigint;
     path: SpendPath;
     serviceId: string;
+    memo: string;
+    queryIndex: number;
   };
 }
 
@@ -166,10 +168,12 @@ export class PremiumExecutor {
         provider,
         data,
         spendEntry: {
-          id: `spend-${Date.now()}`,
-          amountWei: cost,
+          id: spendResult.entry?.id ?? `spend-${Date.now()}`,
+          amountWei: spendResult.entry?.amountWei ?? cost,
           path: 'TREASURY',
           serviceId: provider,
+          memo: spendResult.entry?.memo ?? '',
+          queryIndex: spendResult.entry?.queryIndex ?? 0,
         },
       };
     } catch (error) {

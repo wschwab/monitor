@@ -200,10 +200,11 @@ app.post('/tasks/:id/run', async (request: any, reply: any) => {
     exaApiKey: process.env['EXA_API_KEY'],
     llmApiKey: process.env['LLM_API_KEY'],
   });
+  const origTransition = taskManager.transitionStatus.bind(taskManager);
+  const origAddFeedEntry = taskManager.addFeedEntry.bind(taskManager);
 
   try {
     // Patch: keep spend ledger RUNNING during COMPILING transition
-    const origTransition = taskManager.transitionStatus.bind(taskManager);
     (taskManager as any).transitionStatus = (taskId: string, status: string) => {
       const result = origTransition(taskId, status as any);
       if (taskId === id && (status === 'COMPILING' || status === 'ENHANCING')) {
@@ -212,11 +213,13 @@ app.post('/tasks/:id/run', async (request: any, reply: any) => {
       wsServer.broadcastStatusChange(taskId, status);
       return result;
     };
+    (taskManager as any).addFeedEntry = (taskId: string, entry: any) => {
+      const result = origAddFeedEntry(taskId, entry);
+      wsServer.broadcastFeedEntry(taskId, result);
+      return result;
+    };
 
     const result = await engine.run(id);
-
-    // Restore original
-    (taskManager as any).transitionStatus = origTransition;
 
     // Update taskManager spent totals
     const totals = spendLedger.getSpendTotals(id);
@@ -230,6 +233,9 @@ app.post('/tasks/:id/run', async (request: any, reply: any) => {
     wsServer.broadcastError(id, error instanceof Error ? error.message : 'Unknown error');
     reply.status(500);
     return { error: error instanceof Error ? error.message : 'Unknown error' };
+  } finally {
+    (taskManager as any).transitionStatus = origTransition;
+    (taskManager as any).addFeedEntry = origAddFeedEntry;
   }
 });
 

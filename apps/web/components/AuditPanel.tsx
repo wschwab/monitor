@@ -73,9 +73,9 @@ export function AuditPanel({ entries, totals }: AuditPanelProps) {
                   <div style={{ marginTop: '0.25rem', color: '#94a3b8', fontSize: '0.875rem' }}>
                     {entry.serviceId} · {entry.path} · query #{entry.queryIndex}
                   </div>
-                  {entry.memo && (
+                  {entry.memoSummary && (
                     <div style={{ marginTop: '0.25rem', color: '#64748b', fontSize: '0.8rem' }}>
-                      memo: {entry.memo}
+                      {entry.memoSummary}
                     </div>
                   )}
                 </div>

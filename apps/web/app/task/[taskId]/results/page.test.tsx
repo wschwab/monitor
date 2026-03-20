@@ -38,7 +38,11 @@ describe('ResultsPage', () => {
           timestamp: 1700000001000,
           amountWei: '600000000000000000',
           serviceId: 'cia-declassified',
-          payload: { path: 'TREASURY', memo: '0xabc', queryIndex: 0 },
+          payload: {
+            path: 'TREASURY',
+            memo: '0x00000000000000007461736b2d31323363696164633030300000000000000000',
+            queryIndex: 0,
+          },
         },
         {
           id: 'spend-2',
@@ -66,6 +70,11 @@ describe('ResultsPage', () => {
           payload: {
             report:
               '# Executive Summary\n\nThe budget held. Costs reconciled cleanly.',
+            coverImage: {
+              imageUrl: 'https://demo.monitor/hououin-kyouma.png',
+              title: 'Hououin Kyouma Temporal Incident Brief',
+              alt: 'Collage of a lab console, CRT monitor, and worldline graph',
+            },
           },
         },
       ],
@@ -84,6 +93,10 @@ describe('ResultsPage', () => {
     expect(screen.getByText(/Premium dossier lookup/i)).toBeInTheDocument();
     expect(screen.getByText(/Direct market data query/i)).toBeInTheDocument();
     expect(screen.getByText(/LLM synthesis cost/i)).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: /worldline graph/i })).toBeInTheDocument();
+    expect(
+      screen.getByText(/Memo verified: cia-declassified · query #0 · task 0x00000000...313233/i)
+    ).toBeInTheDocument();
   });
 
   it('surfaces an audit mismatch warning when totals diverge', async () => {

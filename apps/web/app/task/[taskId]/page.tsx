@@ -10,7 +10,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { LiveFeed, FeedEntry, TaskStatus } from '../../../components/LiveFeed';
-import { rehydrateTask, stopTask } from '../../../lib/api';
+import { rehydrateTask, runTask, stopTask } from '../../../lib/api';
 import { connectToTask, WSMessage } from '../../../lib/ws';
 
 // =============================================================================
@@ -25,7 +25,11 @@ export default function TaskPage() {
   const [entries, setEntries] = useState<FeedEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [startingRun, setStartingRun] = useState(false);
   const disconnectRef = useRef<(() => void) | null>(null);
+  const devFundingBypass =
+    process.env.NEXT_PUBLIC_DEV_FUNDING_BYPASS !== 'false' &&
+    process.env.NODE_ENV !== 'production';
 
   // Rehydrate on mount
   useEffect(() => {
@@ -51,14 +55,16 @@ export default function TaskPage() {
   useEffect(() => {
     if (!taskId || loading) return;
 
-    const TERMINAL: TaskStatus[] = ['COMPLETE', 'FAILED', 'STOPPED'];
-    if (TERMINAL.includes(status)) return;
-
     const disconnect = connectToTask({
       taskId,
       onMessage: (msg: WSMessage) => {
         if (msg.type === 'feed_entry') {
-          const entry = msg.payload as FeedEntry;
+          const payload = msg.payload as FeedEntry & { amountWei?: string | bigint };
+          const entry: FeedEntry = {
+            ...payload,
+            amountWei:
+              payload.amountWei !== undefined ? BigInt(payload.amountWei) : undefined,
+          };
           setEntries(prev => [...prev, entry]);
         }
         if (msg.type === 'status_change') {
@@ -67,21 +73,38 @@ export default function TaskPage() {
         }
         if (msg.type === 'complete') {
           setStatus('COMPLETE');
+          disconnectRef.current?.();
+          disconnectRef.current = null;
         }
         if (msg.type === 'error') {
           setStatus('FAILED');
+          disconnectRef.current?.();
+          disconnectRef.current = null;
         }
       },
     });
 
     disconnectRef.current = disconnect;
     return () => disconnect();
-  }, [taskId, loading, status]);
+  }, [taskId, loading]);
 
   async function handleStop() {
     disconnectRef.current?.();
     await stopTask(taskId);
     setStatus('STOPPED');
+  }
+
+  async function handleFundingStart() {
+    setStartingRun(true);
+    setError(null);
+
+    try {
+      await runTask(taskId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to start task');
+    } finally {
+      setStartingRun(false);
+    }
   }
 
   if (loading) {
@@ -101,6 +124,7 @@ export default function TaskPage() {
   }
 
   const isComplete = status === 'COMPLETE';
+  const showFundingGate = status === 'CREATED' || status === 'FUNDING';
 
   return (
     <main style={{ minHeight: '100vh', background: '#080808', color: '#e2e8f0' }}>
@@ -121,6 +145,51 @@ export default function TaskPage() {
         </div>
 
         {/* Live Feed */}
+        {showFundingGate && (
+          <section
+            style={{
+              marginBottom: '1rem',
+              padding: '1rem 1.125rem',
+              borderRadius: '10px',
+              border: '1px solid #334155',
+              background: '#020617',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+              <div>
+                <div style={{ color: '#f8fafc', fontWeight: 700, marginBottom: '0.35rem' }}>
+                  {devFundingBypass ? 'Dev funding bypass ready' : 'Tempo wallet funding required'}
+                </div>
+                <p style={{ margin: 0, color: '#94a3b8', fontSize: '0.95rem', maxWidth: '40rem' }}>
+                  {devFundingBypass
+                    ? 'This local flow uses a dev-mode bypass instead of a passkey wallet. Starting the run will simulate the funding step and continue through the live feed.'
+                    : 'Approve funding in Tempo wallet before the agent can begin executing this task.'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleFundingStart}
+                disabled={startingRun}
+                style={{
+                  padding: '0.75rem 1.1rem',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: '#0ea5e9',
+                  color: '#f8fafc',
+                  fontWeight: 700,
+                  cursor: startingRun ? 'progress' : 'pointer',
+                }}
+              >
+                {startingRun
+                  ? 'Starting run...'
+                  : devFundingBypass
+                    ? 'Use Dev Funding Bypass'
+                    : 'Fund with Tempo Wallet'}
+              </button>
+            </div>
+          </section>
+        )}
+
         <LiveFeed
           entries={entries}
           taskStatus={status}

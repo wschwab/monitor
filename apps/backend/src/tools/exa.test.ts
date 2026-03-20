@@ -265,6 +265,23 @@ describe('ExaAdapter', () => {
       expect(result.error).toMatch(/API_KEY/i);
     });
 
+    it('should fall back to demo mode when API key is missing but fallbackToDemo=true', async () => {
+      const { adapter } = buildAdapter({
+        demoMode: false,
+        apiKey: '',
+        fallbackToDemo: true,
+      });
+
+      const result = await adapter.search({
+        taskId: 'task-test-001',
+        query: 'kyouma fallback query',
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.fromDemo).toBe(true);
+      expect(result.spendEntry?.queryIndex).toBe(0);
+    });
+
     it('should return error on non-200 non-402 response', async () => {
       const mockFetch = vi.fn().mockResolvedValue({
         ok: false,

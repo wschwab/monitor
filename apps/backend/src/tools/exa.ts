@@ -39,6 +39,8 @@ export interface ExaSpendEntry {
   amountWei: bigint;
   path: 'DIRECT_MPP';
   serviceId: string;
+  memo: string;
+  queryIndex: number;
 }
 
 export interface ExaSearchResponse {
@@ -141,6 +143,10 @@ export class ExaAdapter {
   async search(request: ExaSearchRequest): Promise<ExaSearchResponse> {
     // Guard: missing API key in live mode
     if (!this.demoMode && !this.apiKey) {
+      if (this.fallbackToDemo) {
+        return this.demoSearch(request);
+      }
+
       return {
         success: false,
         data: null,
@@ -195,6 +201,8 @@ export class ExaAdapter {
           amountWei: spendResult.entry.amountWei,
           path: 'DIRECT_MPP',
           serviceId: EXA_SERVICE_ID,
+          memo: spendResult.entry.memo,
+          queryIndex: spendResult.entry.queryIndex,
         }
       : undefined;
 
@@ -272,6 +280,8 @@ export class ExaAdapter {
               amountWei: spendResult.entry.amountWei,
               path: 'DIRECT_MPP',
               serviceId: EXA_SERVICE_ID,
+              memo: spendResult.entry.memo,
+              queryIndex: spendResult.entry.queryIndex,
             }
           : undefined;
 
@@ -301,6 +311,8 @@ export class ExaAdapter {
             amountWei: spendResult.entry.amountWei,
             path: 'DIRECT_MPP',
             serviceId: EXA_SERVICE_ID,
+            memo: spendResult.entry.memo,
+            queryIndex: spendResult.entry.queryIndex,
           }
         : undefined;
 

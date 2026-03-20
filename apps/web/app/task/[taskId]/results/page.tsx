@@ -8,6 +8,14 @@ import { ReportPanel } from '../../../../components/ReportPanel';
 import { rehydrateTask, type RehydrateResult } from '../../../../lib/api';
 import { buildResultsViewModel, formatEth } from '../../../../lib/results';
 
+function isFallbackCoverImage(
+  coverImage: { imageUrl?: string; title?: string; alt?: string } | undefined
+): coverImage is { imageUrl: string; title: string; alt?: string } {
+  return !!coverImage &&
+    typeof coverImage.imageUrl === 'string' &&
+    typeof coverImage.title === 'string';
+}
+
 export default function ResultsPage() {
   const params = useParams();
   const taskId = params.taskId as string;
@@ -45,6 +53,11 @@ export default function ResultsPage() {
 
   const model = buildResultsViewModel(data);
   const spentWei = BigInt(model.task.spentWei);
+  const fallbackCoverImage = data.feedEntries
+    .slice()
+    .reverse()
+    .map((entry) => (entry.payload as { coverImage?: { imageUrl?: string; title?: string; alt?: string } } | undefined)?.coverImage)
+    .find(isFallbackCoverImage);
 
   return (
     <main style={{ minHeight: '100vh', background: '#080808', color: '#e2e8f0' }}>
@@ -74,7 +87,11 @@ export default function ResultsPage() {
             refundWei={model.refundWei}
             consistency={model.consistency}
           />
-          <ReportPanel prompt={model.task.prompt} report={model.report} />
+          <ReportPanel
+            prompt={model.task.prompt}
+            report={model.report}
+            coverImage={model.coverImage ?? fallbackCoverImage}
+          />
           <AuditPanel entries={model.auditEntries} totals={model.totals} />
         </div>
       </div>

@@ -6,6 +6,7 @@
  */
 
 import Fastify from 'fastify';
+import { fileURLToPath } from 'node:url';
 import { defiStatsService } from './services/defi-stats';
 import { isDemoMode } from './demo-fixtures';
 
@@ -89,7 +90,7 @@ Demo Mode: ${demoMode ? 'enabled' : 'disabled'}
 // Server Startup (for direct execution)
 // =========================================================================
 
-const PORT = parseInt(process.env['PORT'] || '3002', 10);
+const PORT = parseInt(process.env['PORT'] || '3003', 10);
 
 async function main() {
   const app = buildApp();
@@ -103,8 +104,11 @@ async function main() {
   }
 }
 
-// Start server if run directly
-if (require.main === module) {
+const isDirectExecution =
+  process.argv[1] !== undefined &&
+  fileURLToPath(import.meta.url) === process.argv[1];
+
+if (isDirectExecution) {
   main();
 }
 

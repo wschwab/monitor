@@ -2,10 +2,10 @@
  * monitor-sbwku E2E Backend Smoke Test
  *
  * Exercises the full backend task lifecycle in-process:
- *   CREATED → FUNDING → RUNNING → COMPILING → COMPLETE
+ *   CREATED → FUNDING → RUNNING → COMPILING → ENHANCING → COMPLETE
  *
  * Records spend entries via AgentEngine (demo mode),
- * verifies rehydrate, and saves evidence to .sisyphus/evidence/monitor-e2e-api.txt
+ * verifies rehydrate, and saves evidence to .sisyphus/evidence/task-12-demo-mode.txt
  *
  * Usage: tsx apps/backend/src/e2e-smoke.ts
  */
@@ -149,7 +149,7 @@ async function runE2E() {
     deadline,
     owner: '0x016bbbec8fb7cf59c0baa082f056eb650368051d',
     sources: ['exa'],
-    enhancements: { coverImage: false, audioBriefing: false, uploadDelivery: false, emailDelivery: false },
+    enhancements: { coverImage: true, audioBriefing: false, uploadDelivery: false, emailDelivery: false },
   });
 
   spendLedger.initTask(taskId, budgetWei, deadline, 'CREATED');
@@ -310,7 +310,7 @@ function assertEvidence(ev: Evidence): void {
   const errors: string[] = [];
 
   // Task lifecycle transitions
-  const required = ['CREATED', 'FUNDING', 'RUNNING', 'COMPILING', 'COMPLETE'];
+  const required = ['CREATED', 'FUNDING', 'RUNNING', 'COMPILING', 'ENHANCING', 'COMPLETE'];
   for (const s of required) {
     if (!ev.transitions.includes(s)) {
       errors.push(`Missing transition: ${s}`);
@@ -324,6 +324,11 @@ function assertEvidence(ev: Evidence): void {
     errors.push('No DIRECT_MPP spend entry recorded');
   }
 
+  const hasCoverImageSpend = spendSummary?.entries?.some((e: any) => e.serviceId === 'cover-image');
+  if (!hasCoverImageSpend) {
+    errors.push('No cover-image spend entry recorded');
+  }
+
   // Rehydrate returns feed
   const rehydrate = ev.rehydrate as any;
   if (!rehydrate?.feedEntries || rehydrate.feedEntries.length === 0) {
@@ -334,6 +339,13 @@ function assertEvidence(ev: Evidence): void {
   const hasComplete = ev.feedEntries.some((e: any) => e.type === 'complete');
   if (!hasComplete) {
     errors.push('No "complete" feed entry found');
+  }
+
+  const completeEntry = ev.feedEntries.find((e: any) => e.type === 'complete') as
+    | { payload?: { coverImage?: { imageUrl?: string } } }
+    | undefined;
+  if (!completeEntry?.payload?.coverImage?.imageUrl) {
+    errors.push('No cover image attached to the completion payload');
   }
 
   // Spend is non-zero
@@ -366,7 +378,8 @@ async function main() {
   const evidenceDir = join('/home/x/code/monitor', '.sisyphus', 'evidence');
   mkdirSync(evidenceDir, { recursive: true });
 
-  const evidencePath = join(evidenceDir, 'monitor-e2e-api.txt');
+  const evidencePath = join(evidenceDir, 'task-12-demo-mode.txt');
+  const legacyEvidencePath = join(evidenceDir, 'monitor-e2e-api.txt');
   const timestamp = new Date().toISOString();
 
   const report = [
@@ -382,15 +395,15 @@ async function main() {
     '',
     'SPEND LEDGER',
     '------------',
-    JSON.stringify(ev.spendSummary, null, 2),
+    JSON.stringify(serializeBigInt(ev.spendSummary), null, 2),
     '',
     'WEBSOCKET EVENTS',
     '----------------',
-    JSON.stringify(ev.wsEvents, null, 2),
+    JSON.stringify(serializeBigInt(ev.wsEvents), null, 2),
     '',
     'FEED ENTRIES',
     '------------',
-    JSON.stringify(ev.feedEntries, null, 2),
+    JSON.stringify(serializeBigInt(ev.feedEntries), null, 2),
     '',
     'REHYDRATE RESULT',
     '----------------',
@@ -399,7 +412,7 @@ async function main() {
     '',
     'RUN RESULT',
     '----------',
-    JSON.stringify(ev.runResult, null, 2),
+    JSON.stringify(serializeBigInt(ev.runResult), null, 2),
     '',
     'ON-CHAIN NOTE',
     '-------------',
@@ -418,6 +431,7 @@ async function main() {
   ].join('\n');
 
   writeFileSync(evidencePath, report, 'utf-8');
+  writeFileSync(legacyEvidencePath, report, 'utf-8');
   log(`\n📁 Evidence saved to ${evidencePath}`);
   log('\n✨ monitor-sbwku: E2E smoke test COMPLETE');
 }

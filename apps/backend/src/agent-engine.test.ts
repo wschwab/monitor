@@ -36,18 +36,28 @@ function makeEngine(overrides: Partial<AgentEngineOptions> = {}): {
 function makeTask(
   taskManager: TaskManager,
   spendLedger: SpendLedger,
-  opts: { budgetWei?: bigint } = {}
+  opts: {
+    budgetWei?: bigint;
+    prompt?: string;
+    enhancements?: {
+      coverImage?: boolean;
+      audioBriefing?: boolean;
+      uploadDelivery?: boolean;
+      emailDelivery?: boolean;
+    };
+  } = {}
 ) {
   const budgetWei = opts.budgetWei ?? BigInt('2000000000000000000'); // 2 ETH
   const taskId = `task-test-${Date.now()}`;
 
   taskManager.createTask({
     id: taskId,
-    prompt: 'Find the classified CERN dossier on Hououin Kyouma',
+    prompt: opts.prompt ?? 'Find the classified CERN dossier on Hououin Kyouma',
     budgetWei,
     deadline: Date.now() + 3_600_000,
     owner: '0xdeadbeef',
     sources: ['exa', 'cern-temporal'],
+    enhancements: opts.enhancements,
   });
 
   // Transition to RUNNING so spend ledger accepts charges
@@ -111,6 +121,12 @@ describe('AgentEngine', () => {
       const types = entries.map(e => e.type);
       expect(types).toContain('query');
       expect(types).toContain('status');
+      expect(types).toContain('spend');
+
+      const completeEntry = entries.find((entry) => entry.type === 'complete');
+      expect((completeEntry?.payload as { report?: string } | undefined)?.report).toMatch(
+        /Research Report|partial/i
+      );
     });
 
     it('should include spend summary in the run result', async () => {
@@ -121,6 +137,47 @@ describe('AgentEngine', () => {
 
       expect(result.spendSummary).toBeDefined();
       expect(result.spendSummary!.totalWei).toBeGreaterThanOrEqual(BigInt(0));
+    });
+
+    it('should not charge or attach a cover image when the enhancement is disabled', async () => {
+      const { engine, spendLedger, taskManager } = makeEngine();
+      const taskId = makeTask(taskManager, spendLedger, {
+        enhancements: { coverImage: false },
+      });
+
+      const result = await engine.run(taskId);
+      const spendEntries = spendLedger.getTaskEntries(taskId);
+      const completeEntry = taskManager
+        .getFeedEntries(taskId)
+        .find((entry) => entry.type === 'complete');
+
+      expect(result.coverImage).toBeUndefined();
+      expect(spendEntries.some((entry) => entry.serviceId === 'cover-image')).toBe(false);
+      expect((completeEntry?.payload as { coverImage?: unknown } | undefined)?.coverImage).toBeUndefined();
+    });
+
+    it('should record one cover-image spend and attach demo artwork when the enhancement is enabled', async () => {
+      const { engine, spendLedger, taskManager } = makeEngine();
+      const taskId = makeTask(taskManager, spendLedger, {
+        prompt: 'Find the classified CERN dossier on Hououin Kyouma and summarize his temporal interference incidents',
+        enhancements: { coverImage: true },
+      });
+
+      const result = await engine.run(taskId);
+      const spendEntries = spendLedger.getTaskEntries(taskId);
+      const coverImageEntries = spendEntries.filter((entry) => entry.serviceId === 'cover-image');
+      const completeEntry = taskManager
+        .getFeedEntries(taskId)
+        .find((entry) => entry.type === 'complete');
+      const payload = completeEntry?.payload as
+        | { coverImage?: { imageUrl: string; title: string } }
+        | undefined;
+
+      expect(result.coverImage).toBeDefined();
+      expect(result.coverImage?.title).toMatch(/Hououin Kyouma/i);
+      expect(result.report).toContain('El Psy Kongroo');
+      expect(coverImageEntries).toHaveLength(1);
+      expect(payload?.coverImage?.imageUrl).toContain('hououin-kyouma');
     });
   });
 

@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "turbo run dev",
     "build": "turbo run build",
+    "demo:smoke": "pnpm --filter @monitor/backend run demo:smoke",
     "test": "turbo run test",
     "test:e2e": "turbo run test:e2e",
     "typecheck": "turbo run typecheck",
