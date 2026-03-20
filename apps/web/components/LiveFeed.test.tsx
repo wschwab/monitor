@@ -30,7 +30,7 @@ const QUERY_ENTRY: FeedEntry = {
 const SPEND_ENTRY: FeedEntry = {
   id: 'e3',
   type: 'spend',
-  message: 'Spent 0.01 ETH on exa',
+  message: 'Spent 0.01 USDC on exa',
   timestamp: 1700000002000,
   amountWei: BigInt('10000000000000000'),
   serviceId: 'exa',
@@ -62,7 +62,7 @@ describe('LiveFeed', () => {
 
     it('renders spend entry with amount', () => {
       render(<LiveFeed entries={[SPEND_ENTRY]} taskStatus="RUNNING" />);
-      expect(screen.getByText(/Spent 0.01 ETH on exa/i)).toBeInTheDocument();
+      expect(screen.getByText(/Spent 0.01 USDC on exa/i)).toBeInTheDocument();
     });
 
     it('renders complete entry with success indicator', () => {

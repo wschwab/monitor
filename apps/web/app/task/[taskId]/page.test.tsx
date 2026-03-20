@@ -84,7 +84,7 @@ describe('TaskPage', () => {
         payload: {
           id: 'feed-1',
           type: 'spend',
-          message: 'Spent 0.0100 ETH on exa',
+          message: 'Spent 0.0100 USDC on exa',
           timestamp: 1700000003000,
           amountWei: '10000000000000000',
           serviceId: 'exa',
@@ -96,7 +96,7 @@ describe('TaskPage', () => {
 
     render(<TaskPage />);
 
-    expect(await screen.findByText(/Spent 0.0100 ETH on exa/i)).toBeInTheDocument();
-    expect(screen.getByText(/\(0.0100 ETH\)/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Spent 0.0100 USDC on exa/i)).toBeInTheDocument();
+    expect(screen.getByText(/\(0.0100 USDC\)/i)).toBeInTheDocument();
   });
 });

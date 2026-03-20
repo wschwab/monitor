@@ -114,7 +114,7 @@ export function TaskForm({ onSubmit, disabled = false }: TaskFormProps) {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
         <div>
           <label htmlFor="budget" style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>
-            Budget (ETH)
+            Budget (USDC)
           </label>
           <input
             id="budget"

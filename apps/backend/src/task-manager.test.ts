@@ -186,6 +186,30 @@ describe('TaskManager', () => {
   });
 
   // ===========================================================================
+  // Spend Totals
+  // ===========================================================================
+
+  describe('updateSpent', () => {
+    beforeEach(() => {
+      taskManager.createTask({
+        id: mockTaskId,
+        prompt: 'Test task',
+        budgetWei: BigInt('1000000000000000000'),
+        deadline: Date.now() + 3600000,
+        owner: mockOwner,
+      });
+    });
+
+    it('should replace the tracked spent total instead of incrementing it', () => {
+      taskManager.updateSpent(mockTaskId, BigInt('100000000000000000'));
+      taskManager.updateSpent(mockTaskId, BigInt('250000000000000000'));
+
+      const task = taskManager.getTask(mockTaskId);
+      expect(task?.spentWei).toBe(BigInt('250000000000000000'));
+    });
+  });
+
+  // ===========================================================================
   // Rehydration
   // ===========================================================================
 

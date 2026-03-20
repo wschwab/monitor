@@ -217,12 +217,15 @@ export class TaskManager {
   }
 
   /**
-   * Update task spent amount.
+   * Update task spent total.
+   *
+   * Callers pass the canonical aggregate from SpendLedger, so this setter must
+   * replace the current value instead of incrementing it.
    */
   updateSpent(id: string, amountWei: bigint): void {
     const task = this.tasks.get(id);
     if (task) {
-      task.spentWei += amountWei;
+      task.spentWei = amountWei;
     }
   }
 

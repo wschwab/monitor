@@ -35,8 +35,8 @@ function formatTime(timestamp: number): string {
 }
 
 function formatWei(wei: bigint): string {
-  const eth = Number(wei) / 1e18;
-  return `${eth.toFixed(4)} ETH`;
+  const usdc = Number(wei) / 1e18;
+  return `${usdc.toFixed(4)} USDC`;
 }
 
 interface ActivityEntryProps {

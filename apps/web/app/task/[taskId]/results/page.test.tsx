@@ -89,7 +89,7 @@ describe('ResultsPage', () => {
     expect(screen.getByText(/Executive Summary/i)).toBeInTheDocument();
     expect(screen.getByText(/Spend totals reconciled/i)).toBeInTheDocument();
     expect(screen.getByText(/Refund due/i)).toBeInTheDocument();
-    expect(screen.getAllByText(/0.7000 ETH/i)).toHaveLength(2);
+    expect(screen.getAllByText(/0.7000 USDC/i)).toHaveLength(2);
     expect(screen.getByText(/Premium dossier lookup/i)).toBeInTheDocument();
     expect(screen.getByText(/Direct market data query/i)).toBeInTheDocument();
     expect(screen.getByText(/LLM synthesis cost/i)).toBeInTheDocument();
@@ -136,7 +136,7 @@ describe('ResultsPage', () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText(/Audit total differs from task spend by 0.7000 ETH/i)
+        screen.getByText(/Audit total differs from task spend by 0.7000 USDC/i)
       ).toBeInTheDocument();
     });
   });

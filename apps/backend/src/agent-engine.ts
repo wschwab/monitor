@@ -512,6 +512,6 @@ export class AgentEngine {
   }
 
   private formatEth(wei: bigint): string {
-    return `${(Number(wei) / 1e18).toFixed(4)} ETH`;
+    return `${(Number(wei) / 1e18).toFixed(4)} USDC`;
   }
 }
