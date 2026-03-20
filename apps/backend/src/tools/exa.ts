@@ -66,7 +66,7 @@ export interface ExaAdapterOptions {
 
 const EXA_BASE_URL = 'https://api.exa.ai';
 const EXA_SERVICE_ID = 'exa';
-const EXA_COST_WEI = BigInt('10000000000000000'); // 0.01 ETH
+const EXA_COST_WEI = BigInt('10000000000000000'); // 0.01 USDC
 const DEFAULT_NUM_RESULTS = 5;
 
 // =============================================================================

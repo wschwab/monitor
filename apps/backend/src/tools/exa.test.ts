@@ -33,7 +33,7 @@ const MOCK_EXA_RESULT = {
   autopromptString: 'CERN classified dossier Hououin Kyouma time displacement',
 };
 
-const MOCK_SPEND_AMOUNT = BigInt('10000000000000000'); // 0.01 ETH
+const MOCK_SPEND_AMOUNT = BigInt('10000000000000000'); // 0.01 USDC
 
 // =============================================================================
 // Helper: build adapter with mocked fetch

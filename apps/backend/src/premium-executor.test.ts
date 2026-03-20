@@ -6,7 +6,7 @@ describe('PremiumExecutor', () => {
   let executor: PremiumExecutor;
   let mockSpendLedger: SpendLedger;
   const taskId = 'task-test-123';
-  const budgetWei = BigInt('1000000000000000000'); // 1 ETH
+  const budgetWei = BigInt('1000000000000000000'); // 1 USDC
 
   beforeEach(() => {
     mockSpendLedger = {

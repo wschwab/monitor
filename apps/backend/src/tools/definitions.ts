@@ -52,7 +52,7 @@ export const TOOLS: Tool[] = [
     name: 'Exa Search',
     description: 'Web search and content extraction using Exa API',
     type: 'direct_mpp',
-    costEstimate: '0.01 ETH per query',
+    costEstimate: '0.01 USDC per query',
     parameters: [
       { name: 'query', type: 'string', required: true, description: 'Search query' },
       { name: 'numResults', type: 'number', required: false, description: 'Number of results' },
@@ -63,7 +63,7 @@ export const TOOLS: Tool[] = [
     name: 'Perplexity AI',
     description: 'Question answering using Perplexity API',
     type: 'direct_mpp',
-    costEstimate: '0.05 ETH per query',
+    costEstimate: '0.05 USDC per query',
     parameters: [
       { name: 'question', type: 'string', required: true, description: 'Question to answer' },
     ],
@@ -73,7 +73,7 @@ export const TOOLS: Tool[] = [
     name: 'Allium Data',
     description: 'Blockchain data queries using Allium API',
     type: 'direct_mpp',
-    costEstimate: '0.02 ETH per query',
+    costEstimate: '0.02 USDC per query',
     parameters: [
       { name: 'query', type: 'string', required: true, description: 'Blockchain query' },
     ],
@@ -84,7 +84,7 @@ export const TOOLS: Tool[] = [
     name: 'CERN Temporal',
     description: 'Scientific data from CERN Open Data portal',
     type: 'premium',
-    costEstimate: '0.10 ETH per query',
+    costEstimate: '0.10 USDC per query',
     parameters: [
       { name: 'query', type: 'string', required: true, description: 'Scientific query' },
     ],
@@ -94,7 +94,7 @@ export const TOOLS: Tool[] = [
     name: 'CIA Declassified',
     description: 'Historical documents from CIA FOIA Reading Room',
     type: 'premium',
-    costEstimate: '0.10 ETH per query',
+    costEstimate: '0.10 USDC per query',
     parameters: [
       { name: 'query', type: 'string', required: true, description: 'Document search query' },
     ],
@@ -105,7 +105,7 @@ export const TOOLS: Tool[] = [
     name: 'LLM Synthesis',
     description: 'Synthesize research report from gathered data',
     type: 'llm',
-    costEstimate: '0.50 ETH per report',
+    costEstimate: '0.50 USDC per report',
     parameters: [
       { name: 'data', type: 'string', required: true, description: 'JSON data to synthesize' },
       { name: 'prompt', type: 'string', required: true, description: 'Original user prompt' },
@@ -117,7 +117,7 @@ export const TOOLS: Tool[] = [
     name: 'Cover Image',
     description: 'Generate cover image for report',
     type: 'enhancement',
-    costEstimate: '0.20 ETH per image',
+    costEstimate: '0.20 USDC per image',
     parameters: [
       { name: 'title', type: 'string', required: true, description: 'Report title' },
     ],
@@ -127,7 +127,7 @@ export const TOOLS: Tool[] = [
     name: 'Audio Briefing',
     description: 'Generate audio summary of report',
     type: 'enhancement',
-    costEstimate: '0.15 ETH per audio',
+    costEstimate: '0.15 USDC per audio',
     parameters: [
       { name: 'text', type: 'string', required: true, description: 'Report text to narrate' },
     ],
@@ -161,14 +161,14 @@ export function isDirectMPP(toolId: string): boolean {
 // =============================================================================
 
 export const TOOL_COSTS: Record<string, bigint> = {
-  'exa': BigInt('10000000000000000'),          // 0.01 ETH
-  'perplexity': BigInt('50000000000000000'),   // 0.05 ETH
-  'allium': BigInt('20000000000000000'),       // 0.02 ETH
-  'cern-temporal': BigInt('100000000000000000'), // 0.10 ETH
-  'cia-declassified': BigInt('100000000000000000'), // 0.10 ETH
-  'llm-synthesize': BigInt('500000000000000000'), // 0.50 ETH
-  'cover-image': BigInt('200000000000000000'), // 0.20 ETH
-  'audio-briefing': BigInt('150000000000000000'), // 0.15 ETH
+  'exa': BigInt('10000000000000000'),          // 0.01 USDC
+  'perplexity': BigInt('50000000000000000'),   // 0.05 USDC
+  'allium': BigInt('20000000000000000'),       // 0.02 USDC
+  'cern-temporal': BigInt('100000000000000000'), // 0.10 USDC
+  'cia-declassified': BigInt('100000000000000000'), // 0.10 USDC
+  'llm-synthesize': BigInt('500000000000000000'), // 0.50 USDC
+  'cover-image': BigInt('200000000000000000'), // 0.20 USDC
+  'audio-briefing': BigInt('150000000000000000'), // 0.15 USDC
 };
 
 export function getToolCost(toolId: string): bigint {

@@ -13,7 +13,7 @@ import { SpendEntry, SpendPath, TaskStatus } from '@monitor/shared';
 describe('SpendLedger', () => {
   let ledger: SpendLedger;
   const taskId = 'task-123';
-  const budgetWei = BigInt('1000000000000000000'); // 1 ETH
+  const budgetWei = BigInt('1000000000000000000'); // 1 USDC
   const deadlineMs = Date.now() + 3600000; // 1 hour from now
 
   beforeEach(() => {
@@ -31,7 +31,7 @@ describe('SpendLedger', () => {
       const result = ledger.recordSpend({
         taskId,
         serviceId: 'exa',
-        amountWei: BigInt('100000000000000000'), // 0.1 ETH
+        amountWei: BigInt('100000000000000000'), // 0.1 USDC
         path: 'DIRECT_MPP',
         idempotencyKey: 'spend-1',
       });
@@ -43,7 +43,7 @@ describe('SpendLedger', () => {
     it('should reject spend exceeding budget', () => {
       ledger.initTask(taskId, budgetWei, deadlineMs, 'RUNNING');
       
-      // First spend: 0.9 ETH
+      // First spend: 0.9 USDC
       ledger.recordSpend({
         taskId,
         serviceId: 'exa',
@@ -52,7 +52,7 @@ describe('SpendLedger', () => {
         idempotencyKey: 'spend-1',
       });
 
-      // Second spend: 0.2 ETH (would exceed 1 ETH budget)
+      // Second spend: 0.2 USDC (would exceed 1 USDC budget)
       const result = ledger.recordSpend({
         taskId,
         serviceId: 'perplexity',
@@ -73,7 +73,7 @@ describe('SpendLedger', () => {
       ledger.recordSpend({
         taskId,
         serviceId: 'exa',
-        amountWei: BigInt('200000000000000000'), // 0.2 ETH
+        amountWei: BigInt('200000000000000000'), // 0.2 USDC
         path: 'DIRECT_MPP',
         idempotencyKey: 'spend-1',
       });
@@ -82,7 +82,7 @@ describe('SpendLedger', () => {
       ledger.recordSpend({
         taskId,
         serviceId: 'cern-temporal',
-        amountWei: BigInt('300000000000000000'), // 0.3 ETH
+        amountWei: BigInt('300000000000000000'), // 0.3 USDC
         path: 'TREASURY',
         idempotencyKey: 'spend-2',
       });
@@ -91,7 +91,7 @@ describe('SpendLedger', () => {
       ledger.recordSpend({
         taskId,
         serviceId: 'llm',
-        amountWei: BigInt('100000000000000000'), // 0.1 ETH
+        amountWei: BigInt('100000000000000000'), // 0.1 USDC
         path: 'LLM',
         idempotencyKey: 'spend-3',
       });
@@ -187,7 +187,7 @@ describe('SpendLedger', () => {
 
       expect(result2.success).toBe(false);
       expect(result2.error).toContain('DUPLICATE_IDEMPOTENCY_KEY');
-      // Total should still be 0.1 ETH, not 0.3 ETH
+      // Total should still be 0.1 USDC, not 0.3 USDC
       expect(result2.spentWei).toBe(BigInt('100000000000000000'));
     });
 
@@ -350,14 +350,14 @@ describe('SpendLedger', () => {
         ledger.recordSpend({
           taskId,
           serviceId: 'exa',
-          amountWei: BigInt('100000000000000000'), // 0.1 ETH each
+          amountWei: BigInt('100000000000000000'), // 0.1 USDC each
           path: 'DIRECT_MPP',
           idempotencyKey: `spend-${i}`,
         });
       }
 
       const totals = ledger.getTotals(taskId);
-      expect(totals.totalWei).toBe(BigInt('500000000000000000')); // 0.5 ETH
+      expect(totals.totalWei).toBe(BigInt('500000000000000000')); // 0.5 USDC
       expect(totals.byPath.DIRECT_MPP).toBe(BigInt('500000000000000000'));
     });
 
@@ -422,7 +422,7 @@ describe('SpendLedger', () => {
       });
 
       const remaining = ledger.getRemainingBudget(taskId);
-      expect(remaining).toBe(BigInt('900000000000000000')); // 1 ETH - 0.1 ETH
+      expect(remaining).toBe(BigInt('900000000000000000')); // 1 USDC - 0.1 USDC
     });
 
     it('should update task status', () => {
@@ -443,4 +443,4 @@ describe('SpendLedger', () => {
       expect(task).toBeUndefined();
     });
   });
-});
+});;;;;

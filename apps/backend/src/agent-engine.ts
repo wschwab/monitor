@@ -73,7 +73,7 @@ export interface SynthesizeOptions {
 // Cost Constants
 // =============================================================================
 
-const LLM_SYNTHESIS_COST_WEI = BigInt('500000000000000000'); // 0.5 ETH reserve
+const LLM_SYNTHESIS_COST_WEI = BigInt('500000000000000000'); // 0.5 USDC reserve
 const COVER_IMAGE_COST_WEI = getToolCost('cover-image');
 const PARTIAL_REPORT_BUDGET_MSG =
   '> **Note:** This is a partial report. The task budget was insufficient to complete all planned research steps.';
@@ -169,7 +169,7 @@ export class AgentEngine {
         if (result.spendEntry) {
           this.taskManager.addFeedEntry(taskId, {
             type: 'spend',
-            message: `Spent ${this.formatEth(result.spendEntry.amountWei)} on ${result.spendEntry.serviceId}`,
+            message: `Spent ${this.formatUsdc(result.spendEntry.amountWei)} on ${result.spendEntry.serviceId}`,
             timestamp: Date.now(),
             amountWei: result.spendEntry.amountWei,
             serviceId: result.spendEntry.serviceId,
@@ -237,7 +237,7 @@ export class AgentEngine {
       if (llmSpend?.serviceId === 'llm-synthesize') {
         this.taskManager.addFeedEntry(taskId, {
           type: 'spend',
-          message: `Spent ${this.formatEth(llmSpend.amountWei)} on ${llmSpend.serviceId}`,
+          message: `Spent ${this.formatUsdc(llmSpend.amountWei)} on ${llmSpend.serviceId}`,
           timestamp: llmSpend.timestamp,
           amountWei: llmSpend.amountWei,
           serviceId: llmSpend.serviceId,
@@ -287,7 +287,7 @@ export class AgentEngine {
         if (enhancementSpend.entry) {
           this.taskManager.addFeedEntry(taskId, {
             type: 'spend',
-            message: `Spent ${this.formatEth(enhancementSpend.entry.amountWei)} on ${enhancementSpend.entry.serviceId}`,
+            message: `Spent ${this.formatUsdc(enhancementSpend.entry.amountWei)} on ${enhancementSpend.entry.serviceId}`,
             timestamp: enhancementSpend.entry.timestamp,
             amountWei: enhancementSpend.entry.amountWei,
             serviceId: enhancementSpend.entry.serviceId,
@@ -511,7 +511,7 @@ export class AgentEngine {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
-  private formatEth(wei: bigint): string {
+  private formatUsdc(wei: bigint): string {
     return `${(Number(wei) / 1e18).toFixed(4)} USDC`;
   }
 }

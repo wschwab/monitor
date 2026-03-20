@@ -47,7 +47,7 @@ function makeTask(
     };
   } = {}
 ) {
-  const budgetWei = opts.budgetWei ?? BigInt('2000000000000000000'); // 2 ETH
+  const budgetWei = opts.budgetWei ?? BigInt('2000000000000000000'); // 2 USDC
   const taskId = `task-test-${Date.now()}`;
 
   taskManager.createTask({
@@ -330,7 +330,7 @@ describe('AgentEngine', () => {
       const { engine, spendLedger, taskManager } = makeEngine();
       // Budget just barely enough for LLM reserve only
       const taskId = makeTask(taskManager, spendLedger, {
-        budgetWei: BigInt('500000000000000000'), // 0.5 ETH (= LLM cost)
+        budgetWei: BigInt('500000000000000000'), // 0.5 USDC (= LLM cost)
       });
 
       const tools = engine.selectTools(taskId);

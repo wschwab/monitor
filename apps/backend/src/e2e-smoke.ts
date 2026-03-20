@@ -64,7 +64,7 @@ interface Evidence {
 
 const evidence: Evidence = {
   taskId: '',
-  budget: '2000000000000000000', // 2 ETH-wei budget (backend internal units)
+  budget: '2000000000000000000', // 2 USDC-wei budget (backend internal units)
   transitions: [],
   feedEntries: [],
   wsEvents: [],
@@ -387,7 +387,7 @@ async function main() {
     '==============================================',
     `Date: ${timestamp}`,
     `Task ID: ${ev.taskId}`,
-    `Budget: ${ev.budget} wei (2 ETH-equivalent in backend units)`,
+    `Budget: ${ev.budget} wei (2 USDC-equivalent in backend units)`,
     '',
     'STATUS TRANSITIONS',
     '------------------',

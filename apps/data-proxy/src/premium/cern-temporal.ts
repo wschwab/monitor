@@ -83,7 +83,7 @@ export async function fetchCERNData(
     query: normalizedQuery,
     timestamp: new Date().toISOString(),
     data: matchedData,
-    cost: '0.1 ETH', // Cost hint for billing
+    cost: '0.1 USDC', // Cost hint for billing
   };
 }
 

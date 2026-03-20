@@ -45,8 +45,8 @@ export interface PremiumExecutorOptions {
 // =============================================================================
 
 const PREMIUM_COSTS: Record<PremiumProvider, bigint> = {
-  'cern-temporal': BigInt('100000000000000000'), // 0.1 ETH
-  'cia-declassified': BigInt('100000000000000000'), // 0.1 ETH
+  'cern-temporal': BigInt('100000000000000000'), // 0.1 USDC
+  'cia-declassified': BigInt('100000000000000000'), // 0.1 USDC
 };
 
 // =============================================================================
